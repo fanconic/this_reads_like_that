@@ -1,1 +1,20 @@
 name: "test_1"
+random_state: 42
+
+data:
+    dataset: "AG_NEWS"
+
+train:
+    batch_size: 8
+    epochs: 10
+
+model:
+    name: "mlp"
+    embed_dim: 128
+    n_classes: 4
+
+optimizer:
+    lr: 0.001
+    momentum: 0.9
+    weight_decay: 0.0005
+    betas: [0.9, 0.999]

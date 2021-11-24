@@ -1,0 +1,54 @@
+wandb_version: 1
+
+_wandb:
+  desc: null
+  value:
+    cli_version: 0.12.7
+    framework: torch
+    is_jupyter_run: false
+    is_kaggle_kernel: false
+    python_version: 3.7.10
+    start_time: 1637775810
+    t:
+      1:
+      - 1
+      2:
+      - 1
+      3:
+      - 1
+      - 13
+      - 16
+      4: 3.7.10
+      5: 0.12.7
+      8:
+      - 5
+data:
+  desc: null
+  value:
+    dataset: AG_NEWS
+model:
+  desc: null
+  value:
+    embed_dim: 128
+    n_classes: 4
+    name: mlp
+name:
+  desc: null
+  value: test_1
+optimizer:
+  desc: null
+  value:
+    betas:
+    - 0.9
+    - 0.999
+    lr: 0.001
+    momentum: 0.9
+    weight_decay: 0.0005
+random_state:
+  desc: null
+  value: 42
+train:
+  desc: null
+  value:
+    batch_size: 8
+    epochs: 10

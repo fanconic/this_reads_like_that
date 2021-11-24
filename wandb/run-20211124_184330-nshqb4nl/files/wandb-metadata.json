@@ -1,0 +1,22 @@
+{
+    "os": "Linux-5.4.0-90-generic-x86_64-with-debian-bullseye-sid",
+    "python": "3.7.10",
+    "heartbeatAt": "2021-11-24T17:43:33.653758",
+    "startedAt": "2021-11-24T17:43:30.235081",
+    "docker": null,
+    "cpu_count": 4,
+    "cuda": null,
+    "args": [],
+    "state": "running",
+    "program": "train.py",
+    "codePath": "train.py",
+    "git": {
+        "remote": "https://github.com/fanconic/this_reads_like_that",
+        "commit": "885d3dbb88ef2410f80e2849f27019483c773b90"
+    },
+    "email": "fanconic@student.ethz.ch",
+    "root": "/home/fanconic/polybox/Elektrotechnik & Informationstechnologie (ETH)/5. Jahr/Natural Language Processing/project/code/this_reads_like_that",
+    "host": "fanconic-550-227nz",
+    "username": "fanconic",
+    "executable": "/home/fanconic/anaconda3/bin/python"
+}
