@@ -37,6 +37,7 @@ def main(config, random_state=0):
 
     # build the tokenized vocabulary:
     train_loader, vocab = build_loader(train_iter)
+    test_loader, _ = build_loader(test_iter)
 
     # get the model
     model = get_model(vocab_size=len(vocab), model_configs=config["model"])
@@ -87,7 +88,7 @@ def main(config, random_state=0):
 
     test_losses = []
     with torch.no_grad():
-        for idx, (label, text, offsets) in enumerate(train_loader):
+        for idx, (label, text, offsets) in enumerate(test_loader):
             predicted_label = model(text, offsets)
             test_loss = criterion(predicted_label, label)
             test_losses.append(test_loss)
