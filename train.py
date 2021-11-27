@@ -63,7 +63,8 @@ def main(config, random_state=0):
     start_time = time.time()
 
     for epoch in range(config["train"]["epochs"]):
-        for idx, (label, text, offsets) in enumerate(train_loader):
+        for idx, (label_local, text_local, offsets_local) in enumerate(train_loader):
+            label,text,offsets = label_local.to(device), text_local.to(device), offsets_local.to(device)
             optimizer.zero_grad()
             predicted_label = model(text, offsets)
             loss = criterion(predicted_label, label)
