@@ -37,7 +37,9 @@ def main(config, random_state=0):
 
     # build the tokenized vocabulary:
     train_loader, vocab = build_loader(train_iter)
-    test_loader, _ = build_loader(test_iter)
+    test_loader, _ = build_loader(test_iter,vocab=vocab)
+       
+    
 
     # get the model
     model = get_model(vocab_size=len(vocab), model_configs=config["model"])

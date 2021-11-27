@@ -32,7 +32,7 @@ def build_vocab(data_iter):
     return vocab
 
 
-def build_loader(data_iter, batch_size=8, device="cpu"):
+def build_loader(data_iter, batch_size=8, device="cpu",vocab=None):
     """Build data loader
     Args:
         data_iter: either train or test
@@ -42,7 +42,8 @@ def build_loader(data_iter, batch_size=8, device="cpu"):
         data loader & vocabulary
 
     """
-    vocab = build_vocab(data_iter)
+    if vocab==None:
+        vocab = build_vocab(data_iter)
 
     def text_pipeline(x): return vocab(tokenizer(x))
     def label_pipeline(x): return int(x) - 1
