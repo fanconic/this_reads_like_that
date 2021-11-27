@@ -34,17 +34,20 @@ def main(config, random_state=0):
     set_seed(random_state)
 
     train_iter, test_iter = load_data(config["data"]["dataset"])
+    train_iter = list(train_iter)
+    test_iter = list(test_iter)
 
     # build the tokenized vocabulary:
     train_loader, vocab = build_loader(train_iter)
     test_loader, _ = build_loader(test_iter,vocab=vocab)
-       
+
     
 
     # get the model
     model = get_model(vocab_size=len(vocab), model_configs=config["model"])
+    
     wandb.watch(model)
-
+    
     # prepare teh optimizer
     optimizer = optim.Adam(
         model.parameters(),
@@ -55,7 +58,7 @@ def main(config, random_state=0):
 
     # loss function
     criterion = nn.CrossEntropyLoss()
-
+    
     # training loop
     model.train()
     total_acc, total_count = 0, 0
@@ -63,8 +66,8 @@ def main(config, random_state=0):
     start_time = time.time()
 
     for epoch in range(config["train"]["epochs"]):
-        for idx, (label_local, text_local, offsets_local) in enumerate(train_loader):
-            label,text,offsets = label_local.to(device), text_local.to(device), offsets_local.to(device)
+        for idx, (label, text, offsets) in enumerate(train_loader):
+            
             optimizer.zero_grad()
             predicted_label = model(text, offsets)
             loss = criterion(predicted_label, label)
