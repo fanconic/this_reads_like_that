@@ -43,12 +43,11 @@ def main(config, random_state=0):
     split = int(np.floor(config["data"]["val_size"] * num_train))
     train_idx, valid_idx = indices[split:], indices[:split]
 
+    train_iter = list(train_iter)
+    test_ds = list(test_iter)
+
     train_ds = torch.utils.data.Subset(train_iter, train_idx)
     val_ds = torch.utils.data.Subset(train_iter, valid_idx)
-
-    train_ds = list(train_ds)
-    val_ds = list(val_ds)
-    test_ds = list(test_iter)
 
     # build the tokenized vocabulary:
     train_loader, vocab = build_loader(
@@ -117,7 +116,7 @@ def main(config, random_state=0):
 
         # end of epoch
         print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
-            epoch, total_acc/total_count, val_total_acc/valtotal_count))
+            epoch, total_acc/total_count, val_total_acc/val_total_count))
         wandb.log({"epoch": epoch,
                    "train_loss": loss,
                    "train_accuracy": total_acc/total_count,
