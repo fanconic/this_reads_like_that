@@ -1,4 +1,4 @@
-name: "test_1"
+name: "test_run_2"
 random_state: 42
 
 data:
@@ -6,8 +6,8 @@ data:
     val_size: 0.2
 
 train:
-    batch_size: 128
-    epochs: 10
+    batch_size: 256
+    epochs: 3
     verbose: True
 
 model:

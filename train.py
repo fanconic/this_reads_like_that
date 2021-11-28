@@ -101,6 +101,9 @@ def main(config, random_state=0):
             if verbose:
                 train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
                 train_loader.set_postfix(loss=loss, acc=total_acc/total_count)
+            wandb.log({
+                "train_loss": loss,
+                "train_accuracy": total_acc/total_count})
 
         model.eval()
         # Validation Loop
@@ -118,8 +121,6 @@ def main(config, random_state=0):
         print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
             epoch, total_acc/total_count, val_total_acc/val_total_count))
         wandb.log({"epoch": epoch,
-                   "train_loss": loss,
-                   "train_accuracy": total_acc/total_count,
                    "val_loss": val_loss,
                    "val_accuracy": val_total_acc/val_total_count})
 
