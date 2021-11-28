@@ -13,6 +13,8 @@ import numpy as np
 from src.utils.utils import load_data, get_model
 from src.data.dataloader import build_loader
 import time
+import IPython
+from tqdm import tqdm
 
 
 def set_seed(seed):
@@ -34,20 +36,38 @@ def main(config, random_state=0):
     set_seed(random_state)
 
     train_iter, test_iter = load_data(config["data"]["dataset"])
-    train_iter = list(train_iter)
-    test_iter = list(test_iter)
+    # obtain training indices that will be used for validation
+    num_train = len(train_iter)
+    indices = list(range(num_train))
+    np.random.shuffle(indices)
+    split = int(np.floor(config["data"]["val_size"] * num_train))
+    train_idx, valid_idx = indices[split:], indices[:split]
+
+    train_ds = torch.utils.data.Subset(train_iter, train_idx)
+    val_ds = torch.utils.data.Subset(train_iter, valid_idx)
+
+    train_ds = list(train_ds)
+    val_ds = list(val_ds)
+    test_ds = list(test_iter)
 
     # build the tokenized vocabulary:
-    train_loader, vocab = build_loader(train_iter)
-    test_loader, _ = build_loader(test_iter,vocab=vocab)
+    train_loader, vocab = build_loader(
+        train_ds, device=device, batch_size=config["train"]["batch_size"])
+    val_loader, _ = build_loader(
+        val_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"])
+    test_loader, _ = build_loader(
+        test_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"])
 
-    
+    verbose = config["train"]["verbose"]
+    if verbose:
+        train_loader = tqdm(train_loader)
+        val_loader = tqdm(val_loader)
+        test_loader = tqdm(test_loader)
 
     # get the model
     model = get_model(vocab_size=len(vocab), model_configs=config["model"])
-    
     wandb.watch(model)
-    
+
     # prepare teh optimizer
     optimizer = optim.Adam(
         model.parameters(),
@@ -58,16 +78,19 @@ def main(config, random_state=0):
 
     # loss function
     criterion = nn.CrossEntropyLoss()
-    
+
     # training loop
     model.train()
     total_acc, total_count = 0, 0
-    log_interval = 500
-    start_time = time.time()
+    val_total_acc, val_total_count = 0, 0
 
-    for epoch in range(config["train"]["epochs"]):
+    epochs = config["train"]["epochs"]
+
+    for epoch in range(epochs):
+
+        # Training Loop
+        model.train()
         for idx, (label, text, offsets) in enumerate(train_loader):
-            
             optimizer.zero_grad()
             predicted_label = model(text, offsets)
             loss = criterion(predicted_label, label)
@@ -76,17 +99,33 @@ def main(config, random_state=0):
             optimizer.step()
             total_acc += (predicted_label.argmax(1) == label).sum().item()
             total_count += label.size(0)
-            if idx % log_interval == 0 and idx > 0:
-                elapsed = time.time() - start_time
-                print('| epoch {:3d} | {:5d}/{:5d} batches '
-                      '| accuracy {:8.3f}'.format(epoch, idx, len(train_loader),
-                                                  total_acc/total_count))
-                wandb.log({"epoch": epoch,
-                           "loss": loss,
-                           "accuracy": total_acc/total_count})
+            if verbose:
+                train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
+                train_loader.set_postfix(loss=loss, acc=total_acc/total_count)
 
-                total_acc, total_count = 0, 0
-                start_time = time.time()
+        model.eval()
+        # Validation Loop
+        for idx, (label, text, offsets) in enumerate(val_loader):
+            predicted_label = model(text, offsets)
+            val_loss = criterion(predicted_label, label)
+            val_total_acc += (predicted_label.argmax(1) == label).sum().item()
+            val_total_count += label.size(0)
+            if verbose:
+                val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
+                val_loader.set_postfix(
+                    loss=val_loss, acc=val_total_acc/val_total_count)
+
+        # end of epoch
+        print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
+            epoch, total_acc/total_count, val_total_acc/valtotal_count))
+        wandb.log({"epoch": epoch,
+                   "train_loss": loss,
+                   "train_accuracy": total_acc/total_count,
+                   "val_loss": val_loss,
+                   "val_accuracy": val_total_acc/val_total_count})
+
+        total_acc, total_count = 0, 0
+        val_total_acc, val_total_count = 0, 0
 
     # Evaluate the model
     model.eval()

@@ -3,10 +3,12 @@ random_state: 42
 
 data:
     dataset: "AG_NEWS"
+    val_size: 0.2
 
 train:
-    batch_size: 8
+    batch_size: 128
     epochs: 10
+    verbose: True
 
 model:
     name: "mlp"
