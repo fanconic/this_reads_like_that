@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
+from transformers import GPT2Tokenizer
 
 tokenizer = get_tokenizer('basic_english')
 
@@ -32,7 +33,7 @@ def build_vocab(data_iter):
     return vocab
 
 
-def build_loader(data_iter, batch_size=8, device="cpu", vocab=None):
+def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, model_name=None):
     """Build data loader
     Args:
         data_iter: either train or test
@@ -45,7 +46,12 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None):
     if vocab == None:
         vocab = build_vocab(data_iter)
 
-    def text_pipeline(x): return vocab(tokenizer(x))
+    def text_pipeline(x):
+        if model_name == "gpt2":
+            tkizr = GPT2Tokenizer.from_pretrained(model_name, return_tensors="pt")
+            return tkizr.encode_plus(x)
+        else:
+            return vocab(tokenizer(x))
     def label_pipeline(x): return int(x) - 1
 
     def collate_batch(batch):

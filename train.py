@@ -51,7 +51,7 @@ def main(config, random_state=0):
 
     # build the tokenized vocabulary:
     train_loader, vocab = build_loader(
-        train_ds, device=device, batch_size=config["train"]["batch_size"])
+        train_ds, device=device, batch_size=config["train"]["batch_size"], model_name=config["model"]["name"])
     val_loader, _ = build_loader(
         val_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"])
     test_loader, _ = build_loader(
@@ -154,6 +154,7 @@ if __name__ == "__main__":
 
     # Weights & Biases for tracking training
     wandb.init(
+        mode="disabled",
         project="nlp_groupproject",
         entity="nlp_groupproject",
         name=config["name"],

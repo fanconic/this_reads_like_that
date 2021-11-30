@@ -1,4 +1,4 @@
-name: "test_run_2"
+name: "test_run_gpt2_1"
 random_state: 42
 
 data:
@@ -6,12 +6,16 @@ data:
     val_size: 0.2
 
 train:
-    batch_size: 256
+    batch_size: 1
     epochs: 3
     verbose: True
 
 model:
-    name: "mlp"
+#    name: "mlp"
+#    embed_dim: 128
+#    n_classes: 4
+
+    name: "gpt2"
     embed_dim: 128
     n_classes: 4
 

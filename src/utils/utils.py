@@ -1,6 +1,6 @@
 import torch
 from torchtext.datasets import AG_NEWS, IMDB
-from src.models.models import MLP
+from src.models.models import MLP, GPT2
 
 
 def get_model(vocab_size, model_configs):
@@ -15,6 +15,8 @@ def get_model(vocab_size, model_configs):
 
     if name == "mlp":
         return MLP(vocab_size, model_configs)
+    if name == "gpt2":
+        return GPT2(vocab_size, model_configs)
     else:
         raise NotImplemented
 
