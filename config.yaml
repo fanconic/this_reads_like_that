@@ -6,7 +6,7 @@ data:
     val_size: 0.2
 
 train:
-    batch_size: 1
+    batch_size: 128
     epochs: 3
     verbose: True
 

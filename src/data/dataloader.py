@@ -87,19 +87,22 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         label_list, text_list, offsets = [], [], [0]
         tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
         tkizr.pad_token = '[PAD]'
-        print(batch)
-        tkizr(batch)
+        text = list(list(zip(*batch))[1])  # 0: label, 1: text
+        # print(batch)
+        # print(text)
+        tokenized_text = tkizr(text, return_tensors='pt', padding=True)
+        # print(tokenized_text)
 
         for (_label, _text) in batch:
             label_list.append(label_pipeline(_label))
-            tokenized_text = tkizr(_text)
-
             # return tokenized_text['input_ids'], tokenized_text['attention_mask']
-
-        return label_list.to(device), text_list.to(device), offsets.to(device)
+        label_list = torch.tensor(label_list, dtype=torch.int64)
+        offsets = torch.tensor(offsets[:-1]).cumsum(dim=0)
+        # text_list = torch.cat(tokenized_text)
+        return label_list.to(device), tokenized_text['input_ids'].to(device), tokenized_text['attention_mask'].to(device)
 
 
     dataloader = DataLoader(data_iter, batch_size=batch_size,
-                            shuffle=False, collate_fn=collate_batch)# if not config['model']['name'] == "gpt2" else collate_batch_lm)
+                            shuffle=False, collate_fn=collate_batch if not config['model']['name'] == "gpt2" else collate_batch_lm)
 
     return dataloader, vocab

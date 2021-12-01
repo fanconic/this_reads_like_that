@@ -25,12 +25,13 @@ class GPT2(nn.Module):
         num_class = model_configs["n_classes"]
 
         self.gpt2_classifier = GPT2ForSequenceClassification.from_pretrained('gpt2', num_labels=num_class)
+        self.gpt2_classifier.config.pad_token_id = 50256
         for param in self.gpt2_classifier.base_model.parameters():
             param.requires_grad = False
 
         # self.fc = nn.Linear(embed_dim, num_class)
 
-    def forward(self, tokenized_text, offsets):
+    def forward(self, tokenized_text, attention_mask):
         # embedded = self.gpt2(text)
-        print(tokenized_text)
-        return self.gpt2_classifier(tokenized_text.unsqueeze(0))[0]
+        # print(tokenized_text)
+        return self.gpt2_classifier(tokenized_text, attention_mask=attention_mask)
