@@ -33,7 +33,7 @@ def build_vocab(data_iter):
     return vocab
 
 
-def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, model_name=None):
+def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None):
     """Build data loader
     Args:
         data_iter: either train or test
@@ -47,11 +47,14 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, model_name=N
         vocab = build_vocab(data_iter)
 
     def text_pipeline(x):
-        if model_name == "gpt2":
-            tkizr = GPT2Tokenizer.from_pretrained(model_name, return_tensors="pt")
-            return tkizr.encode_plus(x)
+        if config['model']['name'] == "gpt2":
+            tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+            tkizr.pad_token = '[PAD]'
+            tokenized_text = tkizr(x)
+            return tokenized_text['input_ids']
         else:
             return vocab(tokenizer(x))
+
     def label_pipeline(x): return int(x) - 1
 
     def collate_batch(batch):
@@ -64,6 +67,7 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, model_name=N
         label_list, text_list, offsets = [], [], [0]
         for (_label, _text) in batch:
             label_list.append(label_pipeline(_label))
+            text_ids = text_pipeline(_text)
             processed_text = torch.tensor(
                 text_pipeline(_text), dtype=torch.int64)
             text_list.append(processed_text)
@@ -73,7 +77,29 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, model_name=N
         text_list = torch.cat(text_list)
         return label_list.to(device), text_list.to(device), offsets.to(device)
 
+    def collate_batch_lm(batch):
+        """ Collate function to generate batches from the dataset
+        Args:
+            batch: current batch from the iterator
+        returns:
+            labels, text, offset
+        """
+        label_list, text_list, offsets = [], [], [0]
+        tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+        tkizr.pad_token = '[PAD]'
+        print(batch)
+        tkizr(batch)
+
+        for (_label, _text) in batch:
+            label_list.append(label_pipeline(_label))
+            tokenized_text = tkizr(_text)
+
+            # return tokenized_text['input_ids'], tokenized_text['attention_mask']
+
+        return label_list.to(device), text_list.to(device), offsets.to(device)
+
+
     dataloader = DataLoader(data_iter, batch_size=batch_size,
-                            shuffle=False, collate_fn=collate_batch)
+                            shuffle=False, collate_fn=collate_batch)# if not config['model']['name'] == "gpt2" else collate_batch_lm)
 
     return dataloader, vocab

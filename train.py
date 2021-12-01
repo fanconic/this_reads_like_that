@@ -51,11 +51,11 @@ def main(config, random_state=0):
 
     # build the tokenized vocabulary:
     train_loader, vocab = build_loader(
-        train_ds, device=device, batch_size=config["train"]["batch_size"], model_name=config["model"]["name"])
+        train_ds, device=device, batch_size=config["train"]["batch_size"], config=config)
     val_loader, _ = build_loader(
-        val_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"])
+        val_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"], config=config)
     test_loader, _ = build_loader(
-        test_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"])
+        test_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"], config=config)
 
     verbose = config["train"]["verbose"]
     if verbose:
