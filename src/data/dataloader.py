@@ -72,7 +72,6 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         label_list, text_list, offsets = [], [], [0]
         for (_label, _text) in batch:
             label_list.append(label_pipeline(_label))
-            text_ids = text_pipeline(_text)
             processed_text = torch.tensor(
                 text_pipeline(_text), dtype=torch.int64)
             text_list.append(processed_text)
