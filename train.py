@@ -84,109 +84,68 @@ def main(config, random_state=0):
     val_total_acc, val_total_count = 0, 0
 
     epochs = config["train"]["epochs"]
-    gpt2_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
+    gpt2_bert_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
 
     for epoch in range(epochs):
 
         # Training Loop
         model.train()
-        if gpt2_lm:
-            for idx, (label, text, attention_mask) in enumerate(train_loader):
-                optimizer.zero_grad()
-                predicted_label = model(text, attention_mask)
-                predicted_label = predicted_label.logits
-                # print(predicted_label)
-                loss = criterion(predicted_label, label)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-                optimizer.step()
-                total_acc += (predicted_label.argmax(1) == label).sum().item()
-                total_count += label.size(0)
-                if verbose:
-                    train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
-                    train_loader.set_postfix(loss=loss, acc=total_acc / total_count)
-                wandb.log({
-                    "train_loss": loss,
-                    "train_accuracy": total_acc / total_count})
+        for idx, (label, text, mask) in enumerate(train_loader):
+            optimizer.zero_grad()
+            predicted_label = model(text, mask)
+            predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
+            loss = criterion(predicted_label, label)
+            loss.backward()
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
+            optimizer.step()
+            total_acc += (predicted_label.argmax(1) == label).sum().item()
+            total_count += label.size(0)
+            if verbose:
+                train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
+                train_loader.set_postfix(loss=loss, acc=total_acc / total_count)
+            wandb.log({
+                "train_loss": loss,
+                "train_accuracy": total_acc / total_count})
 
-            model.eval()
-            # Validation Loop
-            for idx, (label, text, attention_mask) in enumerate(val_loader):
-                predicted_label = model(text, attention_mask)
-                predicted_label = predicted_label.logits
-                val_loss = criterion(predicted_label, label)
-                val_total_acc += (predicted_label.argmax(1) == label).sum().item()
-                val_total_count += label.size(0)
-                if verbose:
-                    val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
-                    val_loader.set_postfix(
-                        loss=val_loss, acc=val_total_acc / val_total_count)
-
-            # end of epoch
-            print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
-                epoch, total_acc / total_count, val_total_acc / val_total_count))
-            wandb.log({"epoch": epoch,
-                       "val_loss": val_loss,
-                       "val_accuracy": val_total_acc / val_total_count})
-
-            total_acc, total_count = 0, 0
-            val_total_acc, val_total_count = 0, 0
-
-        else:
-            for idx, (label, text, offsets) in enumerate(train_loader):
-                optimizer.zero_grad()
-                predicted_label = model(text, offsets)
-                loss = criterion(predicted_label, label)
-                loss.backward()
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
-                optimizer.step()
-                total_acc += (predicted_label.argmax(1) == label).sum().item()
-                total_count += label.size(0)
-                if verbose:
-                    train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
-                    train_loader.set_postfix(loss=loss, acc=total_acc/total_count)
-                wandb.log({
-                    "train_loss": loss,
-                    "train_accuracy": total_acc/total_count})
-
-            model.eval()
-            # Validation Loop
-            for idx, (label, text, offsets) in enumerate(val_loader):
-                predicted_label = model(text, offsets)
-                val_loss = criterion(predicted_label, label)
-                val_total_acc += (predicted_label.argmax(1) == label).sum().item()
-                val_total_count += label.size(0)
-                if verbose:
-                    val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
-                    val_loader.set_postfix(
-                        loss=val_loss, acc=val_total_acc/val_total_count)
-
-            # end of epoch
-            print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
-                epoch, total_acc/total_count, val_total_acc/val_total_count))
-            wandb.log({"epoch": epoch,
-                       "val_loss": val_loss,
-                       "val_accuracy": val_total_acc/val_total_count})
-
-            total_acc, total_count = 0, 0
-            val_total_acc, val_total_count = 0, 0
-
-        # Evaluate the model
         model.eval()
+        # Validation Loop
+        for idx, (label, text, mask) in enumerate(val_loader):
+            predicted_label = model(text, mask)
+            predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
+            val_loss = criterion(predicted_label, label)
+            val_total_acc += (predicted_label.argmax(1) == label).sum().item()
+            val_total_count += label.size(0)
+            if verbose:
+                val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
+                val_loader.set_postfix(
+                    loss=val_loss, acc=val_total_acc / val_total_count)
+
+        # end of epoch
+        print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
+            epoch, total_acc / total_count, val_total_acc / val_total_count))
+        wandb.log({"epoch": epoch,
+                   "val_loss": val_loss,
+                   "val_accuracy": val_total_acc / val_total_count})
+
         total_acc, total_count = 0, 0
+        val_total_acc, val_total_count = 0, 0
 
-        test_losses = []
-        with torch.no_grad():
-            for idx, (label, text, offsets) in enumerate(test_loader):
-                predicted_label = model(text, offsets)
-                test_loss = criterion(predicted_label, label)
-                test_losses.append(test_loss)
-                total_acc += (predicted_label.argmax(1) == label).sum().item()
-                total_count += label.size(0)
+    # Evaluate the model
+    model.eval()
+    total_acc, total_count = 0, 0
 
-            wandb.log({"test_loss": np.mean(test_losses),
-                       # "test_accuracy": total_acc/total_count
-                       })
+    test_losses = []
+    with torch.no_grad():
+        for idx, (label, text, offsets) in enumerate(test_loader):
+            predicted_label = model(text, offsets)
+            test_loss = criterion(predicted_label, label)
+            test_losses.append(test_loss)
+            total_acc += (predicted_label.argmax(1) == label).sum().item()
+            total_count += label.size(0)
+
+        wandb.log({"test_loss": np.mean(test_losses),
+                   # "test_accuracy": total_acc/total_count
+                   })
 
 
 if __name__ == "__main__":

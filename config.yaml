@@ -6,18 +6,18 @@ data:
     val_size: 0.2
 
 train:
-    batch_size: 64
+    batch_size: 256
     epochs: 3
     verbose: True
 
 model:
-#    name: "mlp"
-#    embed_dim: 128
-#    n_classes: 4
-
-    name: "bert"
+    name: "mlp"
     embed_dim: 128
     n_classes: 4
+
+#    name: "bert"
+#    embed_dim: 128
+#    n_classes: 4
 
 optimizer:
     lr: 0.001
