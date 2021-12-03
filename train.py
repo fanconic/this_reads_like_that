@@ -84,7 +84,7 @@ def main(config, random_state=0):
     val_total_acc, val_total_count = 0, 0
 
     epochs = config["train"]["epochs"]
-    gpt2_lm = config["model"]["name"] == 'gpt2'
+    gpt2_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
 
     for epoch in range(epochs):
 
@@ -112,7 +112,7 @@ def main(config, random_state=0):
             model.eval()
             # Validation Loop
             for idx, (label, text, attention_mask) in enumerate(val_loader):
-                predicted_label = model(text, offsets)
+                predicted_label = model(text, attention_mask)
                 predicted_label = predicted_label.logits
                 val_loss = criterion(predicted_label, label)
                 val_total_acc += (predicted_label.argmax(1) == label).sum().item()

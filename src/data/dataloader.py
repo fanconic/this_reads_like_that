@@ -2,7 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, BertTokenizer
 
 tokenizer = get_tokenizer('basic_english')
 
@@ -52,6 +52,11 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
             tkizr.pad_token = '[PAD]'
             tokenized_text = tkizr(x)
             return tokenized_text['input_ids']
+        elif config['model']['name'] == "bert":
+            tkizr = BertTokenizer.from_pretrained("bert-base-uncased", return_tensors="pt")
+            tkizr.pad_token = '[PAD]'
+            tokenized_text = tkizr(x)
+            return tokenized_text['input_ids']
         else:
             return vocab(tokenizer(x))
 
@@ -85,11 +90,15 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
             labels, text, offset
         """
         label_list, text_list, offsets = [], [], [0]
-        tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
-        tkizr.pad_token = '[PAD]'
+        if config["model"]["name"] == 'gpt2':
+            tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+            tkizr.pad_token = '[PAD]'
+        elif config["model"]["name"] == 'bert':
+            tkizr = BertTokenizer.from_pretrained('bert-base-uncased', return_tensors="pt")
         text = list(list(zip(*batch))[1])  # 0: label, 1: text
         # print(batch)
         # print(text)
+        # print("we are here", batch, text)
         tokenized_text = tkizr(text, return_tensors='pt', padding=True)
         # print(tokenized_text)
 
@@ -102,7 +111,9 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         return label_list.to(device), tokenized_text['input_ids'].to(device), tokenized_text['attention_mask'].to(device)
 
 
+    use_collate_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
     dataloader = DataLoader(data_iter, batch_size=batch_size,
-                            shuffle=False, collate_fn=collate_batch if not config['model']['name'] == "gpt2" else collate_batch_lm)
+                            shuffle=False,
+                            collate_fn=collate_batch if not use_collate_lm else collate_batch_lm)
 
     return dataloader, vocab
