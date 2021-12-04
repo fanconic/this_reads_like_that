@@ -61,7 +61,6 @@ def main(config, random_state=0):
 
     # get the model
     model = get_model(vocab_size=len(vocab), model_configs=config["model"])
-
     wandb.watch(model)
 
     # prepare teh optimizer
