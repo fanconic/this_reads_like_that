@@ -58,13 +58,10 @@ def main(config, random_state=0):
         test_ds, vocab=vocab, device=device, batch_size=config["train"]["batch_size"], config=config)
 
     verbose = config["train"]["verbose"]
-    if verbose:
-        train_loader = tqdm(train_loader)
-        val_loader = tqdm(val_loader)
-        test_loader = tqdm(test_loader)
 
     # get the model
     model = get_model(vocab_size=len(vocab), model_configs=config["model"])
+
     wandb.watch(model)
 
     # prepare teh optimizer
@@ -84,9 +81,13 @@ def main(config, random_state=0):
     val_total_acc, val_total_count = 0, 0
 
     epochs = config["train"]["epochs"]
-    gpt2_bert_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
+    gpt2_bert_lm = config["model"]["name"] in ['gpt2', 'bert']
 
     for epoch in range(epochs):
+        if verbose:
+            train_loader = tqdm(train_loader)
+            val_loader = tqdm(val_loader)
+            test_loader = tqdm(test_loader)
 
         # Training Loop
         model.train()
@@ -96,13 +97,15 @@ def main(config, random_state=0):
             predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
             loss = criterion(predicted_label, label)
             loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 0.1)
             optimizer.step()
+
+            # calculate metric
             total_acc += (predicted_label.argmax(1) == label).sum().item()
             total_count += label.size(0)
             if verbose:
                 train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
-                train_loader.set_postfix(loss=loss, acc=total_acc / total_count)
+                train_loader.set_postfix(
+                    loss=loss.item(), acc=total_acc / total_count)
             wandb.log({
                 "train_loss": loss,
                 "train_accuracy": total_acc / total_count})
@@ -118,7 +121,7 @@ def main(config, random_state=0):
             if verbose:
                 val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
                 val_loader.set_postfix(
-                    loss=val_loss, acc=val_total_acc / val_total_count)
+                    loss=val_loss.item(), acc=val_total_acc / val_total_count)
 
         # end of epoch
         print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
@@ -130,7 +133,7 @@ def main(config, random_state=0):
         total_acc, total_count = 0, 0
         val_total_acc, val_total_count = 0, 0
 
-    # Evaluate the model
+    # Test the model
     model.eval()
     total_acc, total_count = 0, 0
 
@@ -138,13 +141,14 @@ def main(config, random_state=0):
     with torch.no_grad():
         for idx, (label, text, offsets) in enumerate(test_loader):
             predicted_label = model(text, offsets)
+            predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
             test_loss = criterion(predicted_label, label)
             test_losses.append(test_loss)
             total_acc += (predicted_label.argmax(1) == label).sum().item()
             total_count += label.size(0)
 
         wandb.log({"test_loss": np.mean(test_losses),
-                   # "test_accuracy": total_acc/total_count
+                   "test_accuracy": total_acc/total_count
                    })
 
 

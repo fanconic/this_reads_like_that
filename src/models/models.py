@@ -26,13 +26,16 @@ class GPT2(nn.Module):
         # fine_tune = model_configs["fine_tune"]
         num_class = model_configs["n_classes"]
 
-        self.gpt2_classifier = GPT2ForSequenceClassification.from_pretrained('gpt2', num_labels=num_class)
+        self.gpt2_classifier = GPT2ForSequenceClassification.from_pretrained(
+            'gpt2', num_labels=num_class)
         self.gpt2_classifier.config.pad_token_id = 50256
-        for param in self.gpt2_classifier.base_model.parameters():
-            param.requires_grad = False
+        if model_configs["freeze_layers"]:
+            for param in self.gpt2_classifier.base_model.parameters():
+                param.requires_grad = False
 
     def forward(self, tokenized_text, attention_mask):
         return self.gpt2_classifier(tokenized_text, attention_mask=attention_mask)
+
 
 class BERT(nn.Module):
 
@@ -41,10 +44,12 @@ class BERT(nn.Module):
         # fine_tune = model_configs["fine_tune"]
         num_class = model_configs["n_classes"]
 
-        self.bert_classifier = BertForSequenceClassification.from_pretrained('bert-base-uncased', num_labels=num_class)
+        self.bert_classifier = BertForSequenceClassification.from_pretrained(
+            'bert-base-uncased', num_labels=num_class)
         # self.gpt2_classifier.config.pad_token_id = 50256
-        for param in self.bert_classifier.base_model.parameters():
-            param.requires_grad = False
+        if model_configs["freeze_layers"]:
+            for param in self.bert_classifier.base_model.parameters():
+                param.requires_grad = False
 
     def forward(self, tokenized_text, attention_mask):
         # print(tokenized_text.shape)
