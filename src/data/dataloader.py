@@ -48,12 +48,14 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
 
     def text_pipeline(x):
         if config['model']['name'] == "gpt2":
-            tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+            tkizr = GPT2Tokenizer.from_pretrained(
+                config['model']['name'], return_tensors="pt")
             tkizr.pad_token = '[PAD]'
             tokenized_text = tkizr(x)
             return tokenized_text['input_ids']
         elif config['model']['name'] == "bert":
-            tkizr = BertTokenizer.from_pretrained("bert-base-uncased", return_tensors="pt")
+            tkizr = BertTokenizer.from_pretrained(
+                "bert-base-uncased", return_tensors="pt")
             tkizr.pad_token = '[PAD]'
             tokenized_text = tkizr(x)
             return tokenized_text['input_ids']
@@ -90,25 +92,20 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         """
         label_list, text_list, offsets = [], [], [0]
         if config["model"]["name"] == 'gpt2':
-            tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+            tkizr = GPT2Tokenizer.from_pretrained(
+                config['model']['name'], return_tensors="pt")
             tkizr.pad_token = '[PAD]'
         elif config["model"]["name"] == 'bert':
-            tkizr = BertTokenizer.from_pretrained('bert-base-uncased', return_tensors="pt")
+            tkizr = BertTokenizer.from_pretrained(
+                'bert-base-uncased', return_tensors="pt")
         text = list(list(zip(*batch))[1])  # 0: label, 1: text
-        # print(batch)
-        # print(text)
-        # print("we are here", batch, text)
         tokenized_text = tkizr(text, return_tensors='pt', padding=True)
-        # print(tokenized_text)
 
         for (_label, _text) in batch:
             label_list.append(label_pipeline(_label))
-            # return tokenized_text['input_ids'], tokenized_text['attention_mask']
         label_list = torch.tensor(label_list, dtype=torch.int64)
         offsets = torch.tensor(offsets[:-1]).cumsum(dim=0)
-        # text_list = torch.cat(tokenized_text)
         return label_list.to(device), tokenized_text['input_ids'].to(device), tokenized_text['attention_mask'].to(device)
-
 
     use_collate_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
     dataloader = DataLoader(data_iter, batch_size=batch_size,

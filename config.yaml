@@ -2,8 +2,10 @@ name: "test_gpt2_cf"
 random_state: 42
 
 data:
-    dataset: "AG_NEWS"
+    dataset: "reviews"
     val_size: 0.2
+    data_name: "rt-polarity"
+    data_dir: "./src/data"
 
 train:
     batch_size: 128
@@ -13,7 +15,7 @@ train:
 model:
     name: "bert"
     embed_dim: 768
-    n_classes: 4
+    n_classes: 2
     freeze_layers: True
 
 #    name: "bert"
@@ -21,7 +23,7 @@ model:
 #    n_classes: 4
 
 optimizer:
-    lr: 0.001
+    lr: 0.005
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]

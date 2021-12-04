@@ -35,7 +35,8 @@ def main(config, random_state=0):
 
     set_seed(random_state)
 
-    train_iter, test_iter = load_data(config["data"]["dataset"])
+    train_iter, test_iter = load_data(
+        config["data"]["dataset"], data_dir=config["data"]["data_dir"], data_name=config["data"]["data_name"])
     # obtain training indices that will be used for validation
     num_train = len(train_iter)
     indices = list(range(num_train))
@@ -94,6 +95,7 @@ def main(config, random_state=0):
             optimizer.zero_grad()
             predicted_label = model(text, mask)
             predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
+
             loss = criterion(predicted_label, label)
             loss.backward()
             optimizer.step()
