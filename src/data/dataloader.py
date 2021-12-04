@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import DataLoader
 from torchtext.data.utils import get_tokenizer
 from torchtext.vocab import build_vocab_from_iterator
+from transformers import GPT2Tokenizer, BertTokenizer
 
 tokenizer = get_tokenizer('basic_english')
 
@@ -32,7 +33,7 @@ def build_vocab(data_iter):
     return vocab
 
 
-def build_loader(data_iter, batch_size=8, device="cpu", vocab=None):
+def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None):
     """Build data loader
     Args:
         data_iter: either train or test
@@ -45,7 +46,20 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None):
     if vocab == None:
         vocab = build_vocab(data_iter)
 
-    def text_pipeline(x): return vocab(tokenizer(x))
+    def text_pipeline(x):
+        if config['model']['name'] == "gpt2":
+            tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+            tkizr.pad_token = '[PAD]'
+            tokenized_text = tkizr(x)
+            return tokenized_text['input_ids']
+        elif config['model']['name'] == "bert":
+            tkizr = BertTokenizer.from_pretrained("bert-base-uncased", return_tensors="pt")
+            tkizr.pad_token = '[PAD]'
+            tokenized_text = tkizr(x)
+            return tokenized_text['input_ids']
+        else:
+            return vocab(tokenizer(x))
+
     def label_pipeline(x): return int(x) - 1
 
     def collate_batch(batch):
@@ -67,7 +81,38 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None):
         text_list = torch.cat(text_list)
         return label_list.to(device), text_list.to(device), offsets.to(device)
 
+    def collate_batch_lm(batch):
+        """ Collate function to generate batches from the dataset
+        Args:
+            batch: current batch from the iterator
+        returns:
+            labels, text, offset
+        """
+        label_list, text_list, offsets = [], [], [0]
+        if config["model"]["name"] == 'gpt2':
+            tkizr = GPT2Tokenizer.from_pretrained(config['model']['name'], return_tensors="pt")
+            tkizr.pad_token = '[PAD]'
+        elif config["model"]["name"] == 'bert':
+            tkizr = BertTokenizer.from_pretrained('bert-base-uncased', return_tensors="pt")
+        text = list(list(zip(*batch))[1])  # 0: label, 1: text
+        # print(batch)
+        # print(text)
+        # print("we are here", batch, text)
+        tokenized_text = tkizr(text, return_tensors='pt', padding=True)
+        # print(tokenized_text)
+
+        for (_label, _text) in batch:
+            label_list.append(label_pipeline(_label))
+            # return tokenized_text['input_ids'], tokenized_text['attention_mask']
+        label_list = torch.tensor(label_list, dtype=torch.int64)
+        offsets = torch.tensor(offsets[:-1]).cumsum(dim=0)
+        # text_list = torch.cat(tokenized_text)
+        return label_list.to(device), tokenized_text['input_ids'].to(device), tokenized_text['attention_mask'].to(device)
+
+
+    use_collate_lm = config["model"]["name"] == 'gpt2' or config["model"]["name"] == 'bert'
     dataloader = DataLoader(data_iter, batch_size=batch_size,
-                            shuffle=False, collate_fn=collate_batch)
+                            shuffle=False,
+                            collate_fn=collate_batch if not use_collate_lm else collate_batch_lm)
 
     return dataloader, vocab
