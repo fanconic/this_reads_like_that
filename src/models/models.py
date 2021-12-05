@@ -1,7 +1,9 @@
+import torch
 from torch import nn
 from transformers import (GPT2LMHeadModel,
                           GPT2ForSequenceClassification,
-                          BertForSequenceClassification)
+                          BertForSequenceClassification, BertModel)
+import torch.nn.functional as F
 
 
 class MLP(nn.Module):
@@ -54,3 +56,60 @@ class BERT(nn.Module):
     def forward(self, tokenized_text, attention_mask):
         # print(tokenized_text.shape)
         return self.bert_classifier(tokenized_text)
+
+
+class Proto_BERT(nn.Module):
+    #Sentence Embedding
+
+    def __init__(self, vocab_size, model_configs):
+        super(Proto_BERT, self).__init__()
+        # fine_tune = model_configs["fine_tune"]
+        num_class = model_configs["n_classes"]
+        self.metric = model_configs["similaritymeasure"]
+        self.bert_embedding = BertModel.from_pretrained(
+            'bert-base-uncased', num_labels=num_class)
+        
+        # self.gpt2_classifier.config.pad_token_id = 50256
+        if model_configs["freeze_layers"]:
+            for param in self.bert_embedding.base_model.parameters():
+                param.requires_grad = False
+        
+        # Prototype Layer:
+        n_prototypes = model_configs["n_prototypes"]
+        self.protolayer = nn.Parameter(nn.init.uniform_(torch.empty(1, n_prototypes, model_configs['embed_dim'])),
+                                       requires_grad=True)
+
+        # Classify according to similarity
+        self.fc = nn.Linear(n_prototypes, num_class, bias=False)
+
+    def forward(self, tokenized_text, attention_mask):
+        # print(tokenized_text.shape)
+        embedding = self.bert_embedding(tokenized_text)
+        prototype_distances = self.compute_distance(embedding)
+        class_out = self.fc(prototype_distances)
+        return class_out, prototype_distances
+
+
+    def compute_distance(self, embedding):
+        #Possible Todo: Implement L2 distance
+        #Note that embedding.pooler_output give sequence embedding, while last_hidden_state gives embedding for each token.
+        #https://github.com/huggingface/transformers/issues/7540
+        if self.metric == 'cosine':
+            prototype_distances = - F.cosine_similarity(embedding.pooler_output.unsqueeze(1), self.protolayer, dim=-1)
+        #elif self.metric == 'L2':
+            
+            #prototype_distances = - nes_torch(embedding.unsqueeze(1), self.protolayer, dim=-1)
+        return prototype_distances
+        
+    def get_dist(self, embedding, _):
+        distances = self.compute_distance(embedding)
+        return distances, []
+
+    def get_protos(self):
+        return self.protolayer.squeeze()
+
+    def get_proto_weights(self):
+        return self.fc.weight.T.cpu().detach().numpy()
+
+
+

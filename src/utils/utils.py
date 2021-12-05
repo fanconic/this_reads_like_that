@@ -1,10 +1,11 @@
 import torch
 from torchtext.datasets import AG_NEWS, IMDB
-from src.models.models import MLP, GPT2, BERT
+from src.models.models import MLP, GPT2, BERT, Proto_BERT
 import os
 import pickle
 import nltk
 from nltk.tokenize.treebank import TreebankWordTokenizer, TreebankWordDetokenizer
+import torch.nn.functional as F
 
 tok = TreebankWordTokenizer()
 detok = TreebankWordDetokenizer()
@@ -24,8 +25,10 @@ def get_model(vocab_size, model_configs):
         return MLP(vocab_size, model_configs)
     elif name == "gpt2":
         return GPT2(vocab_size, model_configs)
-    elif name == "bert":
+    elif name == "bert_baseline":
         return BERT(vocab_size, model_configs)
+    elif name == "bert":
+        return Proto_BERT(vocab_size,model_configs)
     else:
         raise NotImplemented
 
@@ -105,3 +108,46 @@ def convert_label(labels):
         elif label == 'neg':
             converted_labels.append(1)
     return converted_labels
+
+
+def proto_loss(prototype_distances, label, model, config, device):
+    max_dist = torch.prod(torch.tensor(model.protolayer.size()))  # proxy variable, could be any high value
+    
+    # prototypes_of_correct_class is tensor of shape  batch_size * num_prototypes
+    # calculate cluster cost, high cost if same class protos are far away
+    # use max_dist because similarity can be >0/<0 -> shift it s.t. it's always >0 
+    # -> other class has value 0 which is always smaller than shifted similarity
+    prototypes_of_correct_class = torch.t(config["model"]["prototype class"][:, label]).to(device)
+    inverted_distances, _ = torch.max((max_dist - prototype_distances) * prototypes_of_correct_class, dim=1)
+    clust_loss = torch.mean(max_dist - inverted_distances)
+    # assures that each sample is not too far distant from a prototype of its class 
+    # MV: Wrong! Clust_loss does that, while distr_loss says for each prototype there is not too far sample of class
+    inverted_distances, _ = torch.max((max_dist - prototype_distances) * prototypes_of_correct_class, dim=0)
+    distr_loss = torch.mean(max_dist - inverted_distances)
+
+    # calculate separation cost, low (highly negative) cost if other class protos are far distant
+    prototypes_of_wrong_class = 1 - prototypes_of_correct_class
+    inverted_distances_to_nontarget_prototypes, _ = \
+        torch.max((max_dist - prototype_distances) * prototypes_of_wrong_class, dim=1)
+    sep_loss = - torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
+
+    # diversity loss, assures that prototypes are not too close
+    comb = torch.combinations(torch.arange(0, config["model"]["n_prototypes"]), r=2)
+    if config["model"]["similaritymeasure"] == 'cosine':
+        divers_loss = torch.mean(F.cosine_similarity(model.protolayer[:, comb][:, :, 0],
+                                                     model.protolayer[:, comb][:, :, 1]).squeeze().clamp(min=0.8))
+    #elif config["model"]["similaritymeasure"] == 'L2':
+    #    divers_loss = torch.mean(nes_torch(model.protolayer[:, comb][:, :, 0],
+    #                                       model.protolayer[:, comb][:, :, 1], dim=2).squeeze().clamp(min=0.8))
+
+    #if args.soft:
+    #    soft_loss = - torch.mean(F.cosine_similarity(model.protolayer[:, args.soft[1]], args.soft[4].squeeze(0),
+    #                                                 dim=1).squeeze().clamp(max=args.soft[3]))
+    #else:
+    #    soft_loss = 0
+    #divers_loss += soft_loss * 0.5
+
+    # l1 loss on classification layer weights, scaled by number of prototypes
+    l1_loss = model.fc.weight.norm(p=1) / config["model"]["n_prototypes"]
+
+    return distr_loss, clust_loss, sep_loss, divers_loss, l1_loss

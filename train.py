@@ -10,7 +10,7 @@ import pandas as pd
 import random
 import os
 import numpy as np
-from src.utils.utils import load_data, get_model
+from src.utils.utils import load_data, get_model, proto_loss
 from src.data.dataloader import build_loader
 import time
 import IPython
@@ -61,7 +61,7 @@ def main(config, random_state=0):
     verbose = config["train"]["verbose"]
 
     # get the model
-    model = get_model(vocab_size=len(vocab), model_configs=config["model"])
+    model = get_model(vocab_size=len(vocab), model_configs=config["model"]).to(device)
     wandb.watch(model)
 
     # prepare teh optimizer
@@ -81,7 +81,7 @@ def main(config, random_state=0):
     val_total_acc, val_total_count = 0, 0
 
     epochs = config["train"]["epochs"]
-    gpt2_bert_lm = config["model"]["name"] in ['gpt2', 'bert']
+    gpt2_bert_lm = config["model"]["name"] in ['gpt2', 'bert_baseline']
 
     for epoch in range(epochs):
         if verbose:
@@ -92,11 +92,20 @@ def main(config, random_state=0):
         # Training Loop
         model.train()
         for idx, (label, text, mask) in enumerate(train_loader):
+            text, label, mask = text.to(device), label.to(device), mask.to(device)
             optimizer.zero_grad()
-            predicted_label = model(text, mask)
+            predicted_label, prototype_distances = model.forward(text, mask)
             predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
 
-            loss = criterion(predicted_label, label)
+            ce_loss = criterion(predicted_label, label)
+            distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = \
+                proto_loss(prototype_distances, label, model, config, device)
+            loss = ce_loss + \
+                   config["loss"]["lambda1"] * distr_loss + \
+                   config["loss"]["lambda2"]* clust_loss + \
+                   config["loss"]["lambda3"] * sep_loss + \
+                   config["loss"]["lambda4"] * divers_loss + \
+                   config["loss"]["lambda5"] * l1_loss  
             loss.backward()
             optimizer.step()
 
@@ -111,25 +120,36 @@ def main(config, random_state=0):
                 "train_loss": loss,
                 "train_accuracy": total_acc / total_count})
 
-        model.eval()
+        
         # Validation Loop
-        for idx, (label, text, mask) in enumerate(val_loader):
-            predicted_label = model(text, mask)
-            predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
-            val_loss = criterion(predicted_label, label)
-            val_total_acc += (predicted_label.argmax(1) == label).sum().item()
-            val_total_count += label.size(0)
-            if verbose:
-                val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
-                val_loader.set_postfix(
-                    loss=val_loss.item(), acc=val_total_acc / val_total_count)
+        model.eval()
+        with torch.no_grad():
+            for idx, (label, text, mask) in enumerate(val_loader):
+                text, label, mask = text.to(device), label.to(device), mask.to(device)
+                predicted_label, prototype_distances  = model.forward(text, mask)
+                predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
+                val_ce_loss = criterion(predicted_label, label)
+                distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = \
+                    proto_loss(prototype_distances, label, model, config, device)
+                val_loss = val_ce_loss + \
+                    config["loss"]["lambda1"] * distr_loss + \
+                    config["loss"]["lambda2"]* clust_loss + \
+                    config["loss"]["lambda3"] * sep_loss + \
+                    config["loss"]["lambda4"] * divers_loss + \
+                    config["loss"]["lambda5"] * l1_loss  
+                val_total_acc += (predicted_label.argmax(1) == label).sum().item()
+                val_total_count += label.size(0)
+                if verbose:
+                    val_loader.set_description(f"Epoch [{epoch}/{epochs}]")
+                    val_loader.set_postfix(
+                        loss=val_loss.item(), acc=val_total_acc / val_total_count)
 
         # end of epoch
         print('| epoch {:3d} | accuracy {:8.3f} | validation accuracy {:8.3f}'.format(
             epoch, total_acc / total_count, val_total_acc / val_total_count))
         wandb.log({"epoch": epoch,
-                   "val_loss": val_loss,
-                   "val_accuracy": val_total_acc / val_total_count})
+                "val_loss": val_loss, #Is this Loss not just of the last batch?
+                "val_accuracy": val_total_acc / val_total_count})
 
         total_acc, total_count = 0, 0
         val_total_acc, val_total_count = 0, 0
@@ -141,16 +161,26 @@ def main(config, random_state=0):
     test_losses = []
     with torch.no_grad():
         for idx, (label, text, offsets) in enumerate(test_loader):
-            predicted_label = model(text, offsets)
+            text, label, mask = text.to(device), label.to(device), mask.to(device)
+            predicted_label, prototype_distances = model.forward(text, offsets)
             predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
-            test_loss = criterion(predicted_label, label)
+            test_ce_loss = criterion(predicted_label, label)
+            distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = \
+                proto_loss(prototype_distances, label, model, config, device)
+            test_loss = test_ce_loss + \
+                config["loss"]["lambda1"] * distr_loss + \
+                config["loss"]["lambda2"]* clust_loss + \
+                config["loss"]["lambda3"] * sep_loss + \
+                config["loss"]["lambda4"] * divers_loss + \
+                config["loss"]["lambda5"] * l1_loss  
             test_losses.append(test_loss)
             total_acc += (predicted_label.argmax(1) == label).sum().item()
             total_count += label.size(0)
-
-        wandb.log({"test_loss": np.mean(test_losses),
-                   "test_accuracy": total_acc/total_count
-                   })
+        print("Test Loss: ", sum(test_losses)/len(test_losses))
+        print("Test Accuracy: ", total_acc/total_count)
+        wandb.log({"test_loss": sum(test_losses)/len(test_losses),
+                "test_accuracy": total_acc/total_count
+                })
 
 
 if __name__ == "__main__":
@@ -158,6 +188,8 @@ if __name__ == "__main__":
     parser.add_argument("--config_path", default="config.yaml")
     args = parser.parse_args()
     config = yaml.safe_load(open(args.config_path, "r"))
+    config["model"]["prototype class"] = torch.eye(config["model"]["n_classes"]).repeat(config["model"]["n_prototypes"] // config["model"]["n_classes"], 1
+                                                                       )
     print("Running experiment: {}".format(config["name"]))
 
     # Weights & Biases for tracking training
