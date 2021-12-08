@@ -15,6 +15,7 @@ from src.data.dataloader import build_loader
 import time
 import IPython
 from tqdm import tqdm
+from src.models.models import Proto_BERT
 
 
 def set_seed(seed):
@@ -108,23 +109,29 @@ def main(config, random_state=0):
         for idx, (label, text, mask) in enumerate(train_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
             optimizer.zero_grad()
-            predicted_label, prototype_distances = model.forward(text, mask)
+            if isinstance(model, Proto_BERT):
+                predicted_label, prototype_distances = model(text, mask)
+            else:
+                predicted_label = model(text, mask)
             predicted_label = (
                 predicted_label.logits if gpt2_bert_lm else predicted_label
             )
 
             ce_loss = criterion(predicted_label, label)
-            distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
-                prototype_distances, label, model, config, device
-            )
-            loss = (
-                ce_loss
-                + config["loss"]["lambda1"] * distr_loss
-                + config["loss"]["lambda2"] * clust_loss
-                + config["loss"]["lambda3"] * sep_loss
-                + config["loss"]["lambda4"] * divers_loss
-                + config["loss"]["lambda5"] * l1_loss
-            )
+            if isinstance(model, Proto_BERT):
+                distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
+                    prototype_distances, label, model, config, device
+                )
+                loss = (
+                    ce_loss
+                    + config["loss"]["lambda1"] * distr_loss
+                    + config["loss"]["lambda2"] * clust_loss
+                    + config["loss"]["lambda3"] * sep_loss
+                    + config["loss"]["lambda4"] * divers_loss
+                    + config["loss"]["lambda5"] * l1_loss
+                )
+            else:
+                loss = ce_loss
             loss.backward()
             optimizer.step()
 
@@ -141,22 +148,35 @@ def main(config, random_state=0):
         with torch.no_grad():
             for idx, (label, text, mask) in enumerate(val_loader):
                 text, label, mask = text.to(device), label.to(device), mask.to(device)
-                predicted_label, prototype_distances = model.forward(text, mask)
+
+                if isinstance(model, Proto_BERT):
+                    predicted_label, prototype_distances = model.forward(text, mask)
+                else:
+                    predicted_label = model.forward(text, mask)
+
                 predicted_label = (
                     predicted_label.logits if gpt2_bert_lm else predicted_label
                 )
+
+                # calc loss
                 val_ce_loss = criterion(predicted_label, label)
-                distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
-                    prototype_distances, label, model, config, device
-                )
-                val_loss = (
-                    val_ce_loss
-                    + config["loss"]["lambda1"] * distr_loss
-                    + config["loss"]["lambda2"] * clust_loss
-                    + config["loss"]["lambda3"] * sep_loss
-                    + config["loss"]["lambda4"] * divers_loss
-                    + config["loss"]["lambda5"] * l1_loss
-                )
+
+                if isinstance(model, Proto_BERT):
+                    distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
+                        prototype_distances, label, model, config, device
+                    )
+
+                    val_loss = (
+                        val_ce_loss
+                        + config["loss"]["lambda1"] * distr_loss
+                        + config["loss"]["lambda2"] * clust_loss
+                        + config["loss"]["lambda3"] * sep_loss
+                        + config["loss"]["lambda4"] * divers_loss
+                        + config["loss"]["lambda5"] * l1_loss
+                    )
+                else:
+                    val_loss = val_ce_loss
+
                 val_total_acc += (predicted_label.argmax(1) == label).sum().item()
                 val_total_count += label.size(0)
                 if verbose:
@@ -190,22 +210,30 @@ def main(config, random_state=0):
     with torch.no_grad():
         for idx, (label, text, offsets) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
-            predicted_label, prototype_distances = model.forward(text, offsets)
+            if isinstance(model, Proto_BERT):
+                predicted_label, prototype_distances = model.forward(text, offsets)
+            else:
+                predicted_label = model.forward(text, offsets)
             predicted_label = (
                 predicted_label.logits if gpt2_bert_lm else predicted_label
             )
             test_ce_loss = criterion(predicted_label, label)
-            distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
-                prototype_distances, label, model, config, device
-            )
-            test_loss = (
-                test_ce_loss
-                + config["loss"]["lambda1"] * distr_loss
-                + config["loss"]["lambda2"] * clust_loss
-                + config["loss"]["lambda3"] * sep_loss
-                + config["loss"]["lambda4"] * divers_loss
-                + config["loss"]["lambda5"] * l1_loss
-            )
+
+            if isinstance(model, Proto_BERT):
+                distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
+                    prototype_distances, label, model, config, device
+                )
+                test_loss = (
+                    test_ce_loss
+                    + config["loss"]["lambda1"] * distr_loss
+                    + config["loss"]["lambda2"] * clust_loss
+                    + config["loss"]["lambda3"] * sep_loss
+                    + config["loss"]["lambda4"] * divers_loss
+                    + config["loss"]["lambda5"] * l1_loss
+                )
+            else:
+                test_loss = test_ce_loss
+
             test_losses.append(test_loss)
             total_acc += (predicted_label.argmax(1) == label).sum().item()
             total_count += label.size(0)

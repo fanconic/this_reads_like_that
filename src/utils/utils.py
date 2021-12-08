@@ -11,15 +11,6 @@ tok = TreebankWordTokenizer()
 detok = TreebankWordDetokenizer()
 
 
-def ned_torch(x1, x2, dim=1, eps=1e-8):
-    ned_2 = 0.5 * ((x1 - x2).var(dim=dim) / (x1.var(dim=dim) + x2.var(dim=dim) + eps))
-    return ned_2 ** 0.5
-
-
-def nes_torch(x1, x2, dim=1, eps=1e-8):
-    return 1 - ned_torch(x1, x2, dim, eps)
-
-
 def get_model(vocab_size, model_configs):
     """create a torch model with the given configs
     args:

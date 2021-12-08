@@ -8,7 +8,14 @@ from transformers import (
 )
 import torch.nn.functional as F
 
-from src.utils.utils import nes_torch
+
+def ned_torch(x1, x2, dim=1, eps=1e-8):
+    ned_2 = 0.5 * ((x1 - x2).var(dim=dim) / (x1.var(dim=dim) + x2.var(dim=dim) + eps))
+    return ned_2 ** 0.5
+
+
+def nes_torch(x1, x2, dim=1, eps=1e-8):
+    return 1 - ned_torch(x1, x2, dim, eps)
 
 
 class MLP(nn.Module):
@@ -52,7 +59,6 @@ class BERT(nn.Module):
         self.bert_classifier = BertForSequenceClassification.from_pretrained(
             "bert-base-uncased", num_labels=num_class
         )
-        # self.gpt2_classifier.config.pad_token_id = 50256
         if model_configs["freeze_layers"]:
             for param in self.bert_classifier.base_model.parameters():
                 param.requires_grad = False
@@ -74,7 +80,7 @@ class Proto_BERT(nn.Module):
             "bert-base-uncased", num_labels=num_class
         )
 
-        # self.gpt2_classifier.config.pad_token_id = 50256
+
         if model_configs["freeze_layers"]:
             for param in self.bert_embedding.base_model.parameters():
                 param.requires_grad = False

@@ -46,14 +46,14 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         vocab = build_vocab(data_iter)
 
     def text_pipeline(x):
-        if config["model"]["name"] == "gpt2":
+        if "gpt2" in config["model"]["name"]:
             tkizr = GPT2Tokenizer.from_pretrained(
                 config["model"]["name"], return_tensors="pt"
             )
             tkizr.pad_token = "[PAD]"
             tokenized_text = tkizr(x)
             return tokenized_text["input_ids"]
-        elif config["model"]["name"] == "bert":
+        elif "bert" in config["model"]["name"]:
             tkizr = BertTokenizer.from_pretrained(
                 "bert-base-uncased", return_tensors="pt"
             )
@@ -92,12 +92,12 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
             labels, text, offset
         """
         label_list, text_list, offsets = [], [], [0]
-        if config["model"]["name"] == "gpt2":
+        if "gpt2" in config["model"]["name"]:
             tkizr = GPT2Tokenizer.from_pretrained(
                 config["model"]["name"], return_tensors="pt"
             )
             tkizr.pad_token = "[PAD]"
-        elif config["model"]["name"] == "bert":
+        elif "bert" in config["model"]["name"]:
             tkizr = BertTokenizer.from_pretrained(
                 "bert-base-uncased", return_tensors="pt"
             )
@@ -115,7 +115,7 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         )
 
     use_collate_lm = (
-        config["model"]["name"] == "gpt2" or config["model"]["name"] == "bert"
+        "gpt2" in config["model"]["name"] or "bert" in config["model"]["name"]
     )
     dataloader = DataLoader(
         data_iter,

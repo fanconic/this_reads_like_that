@@ -1,4 +1,4 @@
-name: "test_bert_mv"
+name: "test_bert"
 random_state: 42
 wandb_logging: False
 
@@ -10,11 +10,11 @@ data:
 
 train:
     batch_size: 128
-    epochs: 20
+    epochs: 5
     verbose: True
 
 model:
-    name: "bert"
+    name: "bert_baseline"
     embed_dim: 768
     n_classes: 2
     freeze_layers: True
