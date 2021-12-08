@@ -1,5 +1,6 @@
 name: "test_bert_mv"
 random_state: 42
+wandb_logging: False
 
 data:
     dataset: "reviews"
