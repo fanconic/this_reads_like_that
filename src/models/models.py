@@ -93,26 +93,27 @@ class Proto_BERT(nn.Module):
         )
 
         # Classify according to similarity
+        #self.test = nn.Linear(model_configs["embed_dim"],n_prototypes)
         self.fc = nn.Linear(n_prototypes, num_class, bias=False)
 
     def forward(self, tokenized_text, attention_mask):
         # print(tokenized_text.shape)
-        embedding = self.bert_embedding(tokenized_text)
+        embedding = self.bert_embedding(tokenized_text).pooler_output.unsqueeze(1)
+        #prototype_distances = self.test(embedding.pooler_output)
         prototype_distances = self.compute_distance(embedding)
         class_out = self.fc(prototype_distances)
         return class_out, prototype_distances
 
     def compute_distance(self, embedding):
-        # Possible Todo: Implement L2 distance
         # Note that embedding.pooler_output give sequence embedding, while last_hidden_state gives embedding for each token.
         # https://github.com/huggingface/transformers/issues/7540
         if self.metric == "cosine":
             prototype_distances = -F.cosine_similarity(
-                embedding.pooler_output.unsqueeze(1), self.protolayer, dim=-1
+                embedding, self.protolayer, dim=-1
             )
         elif self.metric == "L2":
             prototype_distances = -nes_torch(
-                embedding.unsqueeze(1), self.protolayer, dim=-1
+                embedding, self.protolayer, dim=-1
             )
         else:
             raise NotImplemented

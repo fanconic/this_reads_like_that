@@ -14,12 +14,12 @@ train:
     verbose: True
 
 model:
-    name: "bert_baseline"
+    name: "bert"
     embed_dim: 768
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20
-    similaritymeasure: "cosine"
+    similaritymeasure: "L2"
 
 
 #    name: "bert"
@@ -33,9 +33,15 @@ optimizer:
     betas: [0.9, 0.999]
 
 loss:
-    lambda1: 0.2
-    lambda2: 0.2
-    lambda3: 0.1
-    lambda4: 0.3
-    lambda5: 0.001
+    lambda1: 0
+    lambda2: 0
+    lambda3: 0
+    lambda4: 0
+    lambda5: 0
+    
+    #lambda1: 0.2
+    #lambda2: 0.2
+    #lambda3: 0.1
+    #lambda4: 0.3
+    #lambda5: 0.001
 

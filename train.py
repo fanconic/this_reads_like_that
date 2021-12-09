@@ -194,7 +194,7 @@ def main(config, random_state=0):
         wandb.log(
             {
                 "epoch": epoch,
-                "val_loss": val_loss,  # Is this Loss not just of the last batch?
+                "val_loss": val_loss, 
                 "val_accuracy": val_total_acc / val_total_count,
             }
         )

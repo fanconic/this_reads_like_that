@@ -1,6 +1,6 @@
 import torch
 from torchtext.datasets import AG_NEWS, IMDB
-from src.models.models import MLP, GPT2, BERT, Proto_BERT
+from src.models.models import MLP, GPT2, BERT, Proto_BERT, nes_torch
 import os
 import pickle
 import nltk
@@ -153,9 +153,9 @@ def proto_loss(prototype_distances, label, model, config, device):
             .squeeze()
             .clamp(min=0.8)
         )
-    # elif config["model"]["similaritymeasure"] == 'L2':
-    #    divers_loss = torch.mean(nes_torch(model.protolayer[:, comb][:, :, 0],
-    #                                       model.protolayer[:, comb][:, :, 1], dim=2).squeeze().clamp(min=0.8))
+    elif config["model"]["similaritymeasure"] == 'L2':
+       divers_loss = torch.mean(nes_torch(model.protolayer[:, comb][:, :, 0],
+                                          model.protolayer[:, comb][:, :, 1], dim=2).squeeze().clamp(min=0.8))
 
     # if args.soft:
     #    soft_loss = - torch.mean(F.cosine_similarity(model.protolayer[:, args.soft[1]], args.soft[4].squeeze(0),
