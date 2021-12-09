@@ -1,6 +1,6 @@
-name: "test_bert"
+name: "test_protogpt2_2"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "reviews"
@@ -10,16 +10,20 @@ data:
 
 train:
     batch_size: 128
-    epochs: 5
-    verbose: True
+    epochs: 10
+    verbose: False
 
 model:
-    name: "bert_baseline"
+    name: "proto"
+    submodel: "gpt2"
     embed_dim: 768
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20
-    similaritymeasure: "cosine"
+    similaritymeasure: "L2"
+    proto_size: 1
+    attention: False
+    dilated: [1]
 
 
 #    name: "bert"
@@ -27,10 +31,18 @@ model:
 #    n_classes: 4
 
 optimizer:
-    lr: 0.005
+    name: "adam"
+    lr: 0.001
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]
+    T_0: 10
+
+scheduler:
+    name: "poly"
+    lr_reduce_factor: 0.1
+    patience_lr_reduce: 10
+    poly_reduce: 0.9
 
 loss:
     lambda1: 0.2

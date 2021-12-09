@@ -10,12 +10,18 @@ import pandas as pd
 import random
 import os
 import numpy as np
-from src.utils.utils import load_data, get_model, proto_loss
+from src.utils.utils import (
+    load_data,
+    get_model,
+    proto_loss,
+    get_optimizer,
+    get_scheduler,
+)
 from src.data.dataloader import build_loader
 import time
 import IPython
 from tqdm import tqdm
-from src.models.models import Proto_BERT
+from src.models.models import ProtoNet
 
 
 def set_seed(seed):
@@ -80,12 +86,8 @@ def main(config, random_state=0):
     wandb.watch(model)
 
     # prepare teh optimizer
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=config["optimizer"]["lr"],
-        betas=config["optimizer"]["betas"],
-        weight_decay=config["optimizer"]["weight_decay"],
-    )
+    optimizer = get_optimizer(model, config)
+    scheduler = get_scheduler(optimizer, config)
 
     # loss function
     criterion = nn.CrossEntropyLoss()
@@ -109,7 +111,7 @@ def main(config, random_state=0):
         for idx, (label, text, mask) in enumerate(train_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
             optimizer.zero_grad()
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 predicted_label, prototype_distances = model(text, mask)
             else:
                 predicted_label = model(text, mask)
@@ -118,7 +120,7 @@ def main(config, random_state=0):
             )
 
             ce_loss = criterion(predicted_label, label)
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
                     prototype_distances, label, model, config, device
                 )
@@ -149,7 +151,7 @@ def main(config, random_state=0):
             for idx, (label, text, mask) in enumerate(val_loader):
                 text, label, mask = text.to(device), label.to(device), mask.to(device)
 
-                if isinstance(model, Proto_BERT):
+                if isinstance(model, ProtoNet):
                     predicted_label, prototype_distances = model.forward(text, mask)
                 else:
                     predicted_label = model.forward(text, mask)
@@ -161,7 +163,7 @@ def main(config, random_state=0):
                 # calc loss
                 val_ce_loss = criterion(predicted_label, label)
 
-                if isinstance(model, Proto_BERT):
+                if isinstance(model, ProtoNet):
                     distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
                         prototype_distances, label, model, config, device
                     )
@@ -184,6 +186,8 @@ def main(config, random_state=0):
                     val_loader.set_postfix(
                         loss=val_loss.item(), acc=val_total_acc / val_total_count
                     )
+
+        scheduler.step()
 
         # end of epoch
         print(
@@ -210,7 +214,7 @@ def main(config, random_state=0):
     with torch.no_grad():
         for idx, (label, text, offsets) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 predicted_label, prototype_distances = model.forward(text, offsets)
             else:
                 predicted_label = model.forward(text, offsets)
@@ -219,7 +223,7 @@ def main(config, random_state=0):
             )
             test_ce_loss = criterion(predicted_label, label)
 
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
                     prototype_distances, label, model, config, device
                 )

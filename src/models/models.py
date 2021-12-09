@@ -5,7 +5,9 @@ from transformers import (
     GPT2ForSequenceClassification,
     BertForSequenceClassification,
     BertModel,
+    GPT2Model,
 )
+from sentence_transformers import SentenceTransformer
 import torch.nn.functional as F
 
 
@@ -68,41 +70,59 @@ class BERT(nn.Module):
         return self.bert_classifier(tokenized_text)
 
 
-class Proto_BERT(nn.Module):
+class ProtoNet(nn.Module):
     # Sentence Embedding
 
     def __init__(self, vocab_size, model_configs):
-        super(Proto_BERT, self).__init__()
+        super(ProtoNet, self).__init__()
         # fine_tune = model_configs["fine_tune"]
         num_class = model_configs["n_classes"]
         self.metric = model_configs["similaritymeasure"]
-        self.bert_embedding = BertModel.from_pretrained(
-            "bert-base-uncased", num_labels=num_class
-        )
+        if "bert" in model_configs["submodel"]:
+            self.embedder = BertModel.from_pretrained(
+                "bert-base-uncased", num_labels=num_class
+            ).last_hidden_state
+        elif "gpt2" in model_configs["submodel"]:
+            self.embedder = GPT2Model.from_pretrained("gpt2")
+        else:
+            raise NotImplemented
 
+        self.n_prototypes = model_configs["n_prototypes"]
+        self.proto_size = model_configs["proto_size"]
+        self.enc_size = self.embedder.config.hidden_size
+        self.attn = model_configs["attention"]
+        self.dilated = model_configs["dilated"]
+        self.num_filters = [self.n_prototypes // len(self.dilated)] * len(self.dilated)
+        self.num_filters[0] += self.n_prototypes % len(self.dilated)
 
         if model_configs["freeze_layers"]:
-            for param in self.bert_embedding.base_model.parameters():
+            for param in self.embedder.parameters():
                 param.requires_grad = False
 
         # Prototype Layer:
-        n_prototypes = model_configs["n_prototypes"]
         self.protolayer = nn.Parameter(
-            nn.init.uniform_(torch.empty(1, n_prototypes, model_configs["embed_dim"])),
+            nn.init.uniform_(
+                torch.empty(1, self.n_prototypes, self.enc_size, self.proto_size)
+            ),
             requires_grad=True,
         )
 
         # Classify according to similarity
-        self.fc = nn.Linear(n_prototypes, num_class, bias=False)
+        self.fc = nn.Linear(self.n_prototypes, num_class, bias=False)
 
     def forward(self, tokenized_text, attention_mask):
-        # print(tokenized_text.shape)
-        embedding = self.bert_embedding(tokenized_text)
-        prototype_distances = self.compute_distance(embedding)
+        embedding = self.embedder(
+            tokenized_text, attention_mask=attention_mask
+        ).last_hidden_state
+        distances = self.compute_distance(embedding, attention_mask)
+        prototype_distances = torch.cat(
+            [torch.min(dist, dim=2)[0] for dist in distances], dim=1
+        )
         class_out = self.fc(prototype_distances)
         return class_out, prototype_distances
 
-    def compute_distance(self, embedding):
+    def compute_distance(self, embedding, mask):
+        """
         # Possible Todo: Implement L2 distance
         # Note that embedding.pooler_output give sequence embedding, while last_hidden_state gives embedding for each token.
         # https://github.com/huggingface/transformers/issues/7540
@@ -112,11 +132,49 @@ class Proto_BERT(nn.Module):
             )
         elif self.metric == "L2":
             prototype_distances = -nes_torch(
-                embedding.unsqueeze(1), self.protolayer, dim=-1
+                embedding.pooler_output.unsqueeze(1), self.protolayer, dim=-1
             )
         else:
             raise NotImplemented
-        return prototype_distances
+        return prototype_distances"""
+        N, S = embedding.shape[0:2]  # Batch size, Sequence length
+        E = self.enc_size  # Encoding size
+        K = self.proto_size  # Patch length
+        p = self.protolayer.view(1, self.n_prototypes, 1, K * E)
+        distances = []
+        if self.attn:
+            c = torch.combinations(torch.arange(S), r=K)
+            C = c.shape[0]
+            b = embedding[:, c, :].view(N, 1, C, K * E)
+            if self.metric == "L2":
+                dist = -nes_torch(b, p, dim=-1)
+            elif self.metric == "cosine":
+                dist = -F.cosine_similarity(b, p, dim=-1)
+            distances.append(dist)
+        else:
+            j = 0
+            for d, n in zip(self.dilated, self.num_filters):
+                H = S - d * (K - 1)  # Number of patches
+                x = embedding.unsqueeze(1)
+                # use sliding window to get patches
+                x = F.unfold(x, kernel_size=(K, 1), dilation=d)
+                x = x.view(N, 1, H, K * E)
+                p_ = p[:, j : j + n, :]
+                p_ = p_.view(1, n, 1, K * E)
+                if self.metric == "L2":
+                    dist = -nes_torch(x, p_, dim=-1)
+                elif self.metric == "cosine":
+                    dist = -F.cosine_similarity(x, p_, dim=-1)
+                # cut off combinations that contain padding, still keep for every example at least one combination, even
+                # if it contains padding
+                overlap = d * (K - 1)
+                m = mask[:, overlap:].unsqueeze(1)
+                m[:, :, 0] = 1
+                dist = dist * m
+                distances.append(dist)
+                j += n
+
+        return distances
 
     def get_dist(self, embedding, _):
         distances = self.compute_distance(embedding)
