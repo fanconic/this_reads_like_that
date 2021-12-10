@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch._C import device
 from transformers import (
     GPT2LMHeadModel,
     GPT2ForSequenceClassification,
@@ -7,6 +8,7 @@ from transformers import (
     BertModel,
 )
 import torch.nn.functional as F
+from sentence_transformers import SentenceTransformer
 
 
 def ned_torch(x1, x2, dim=1, eps=1e-8):
@@ -73,40 +75,24 @@ class Proto_BERT(nn.Module):
 
     def __init__(self, vocab_size, model_configs):
         super(Proto_BERT, self).__init__()
-        # fine_tune = model_configs["fine_tune"]
         num_class = model_configs["n_classes"]
         self.metric = model_configs["similaritymeasure"]
-        self.bert_embedding = BertModel.from_pretrained(
-            "bert-base-uncased", num_labels=num_class
-        )
-
-
-        if model_configs["freeze_layers"]:
-            for param in self.bert_embedding.base_model.parameters():
-                param.requires_grad = False
-
         # Prototype Layer:
         n_prototypes = model_configs["n_prototypes"]
-        self.protolayer = nn.Parameter(
-            nn.init.uniform_(torch.empty(1, n_prototypes, model_configs["embed_dim"])),
+        self.protolayer = nn.parameter.Parameter(
+            nn.init.uniform_(torch.empty(1, n_prototypes, model_configs["embed_dim"]),-1,1),
             requires_grad=True,
         )
 
         # Classify according to similarity
-        #self.test = nn.Linear(model_configs["embed_dim"],n_prototypes)
         self.fc = nn.Linear(n_prototypes, num_class, bias=False)
 
-    def forward(self, tokenized_text, attention_mask):
-        # print(tokenized_text.shape)
-        embedding = self.bert_embedding(tokenized_text).pooler_output.unsqueeze(1)
-        #prototype_distances = self.test(embedding.pooler_output)
-        prototype_distances = self.compute_distance(embedding)
+    def forward(self, embedding, attention_mask):
+        prototype_distances = self.compute_distance(embedding.unsqueeze(1))
         class_out = self.fc(prototype_distances)
         return class_out, prototype_distances
 
-    def compute_distance(self, embedding):
-        # Note that embedding.pooler_output give sequence embedding, while last_hidden_state gives embedding for each token.
-        # https://github.com/huggingface/transformers/issues/7540
+    def compute_distance(self, embedding):        
         if self.metric == "cosine":
             prototype_distances = -F.cosine_similarity(
                 embedding, self.protolayer, dim=-1
@@ -128,3 +114,21 @@ class Proto_BERT(nn.Module):
 
     def get_proto_weights(self):
         return self.fc.weight.T.cpu().detach().numpy()
+
+    def compute_embedding(self, x, config, device):
+        if config["model"]["name"] == 'bert' and config["model"]["embedding"] == "sentence":
+            LM = SentenceTransformer('bert-large-nli-mean-tokens', device=device)
+            labels = torch.empty((len(x)))
+            embedding = torch.empty((len(x),1024))
+            for idx, (label,input) in enumerate(x):
+                labels[idx] = label
+                embedding[idx] = LM.encode(input, convert_to_tensor=True, device=device).cpu().detach()
+                if idx % 100 == 0:
+                    print(idx)
+        for param in LM.parameters():
+            param.requires_grad = False
+        if len(embedding.size()) == 1:
+            embedding = embedding.unsqueeze(0).unsqueeze(0)
+        mask = torch.ones(embedding.shape)  # required for attention models
+        return embedding, mask, (labels-1)
+        
