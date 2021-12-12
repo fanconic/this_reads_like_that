@@ -6,7 +6,9 @@ from transformers import (
     GPT2ForSequenceClassification,
     BertForSequenceClassification,
     BertModel,
+    GPT2Model,
 )
+from sentence_transformers import SentenceTransformer
 import torch.nn.functional as F
 from sentence_transformers import SentenceTransformer
 
@@ -70,23 +72,38 @@ class BERT(nn.Module):
         return self.bert_classifier(tokenized_text)
 
 
-class Proto_BERT(nn.Module):
+class ProtoNet(nn.Module):
     # Sentence Embedding
-
     def __init__(self, vocab_size, model_configs):
-        super(Proto_BERT, self).__init__()
+        super(ProtoNet, self).__init__()
         num_class = model_configs["n_classes"]
         self.metric = model_configs["similaritymeasure"]
+        if "bert" in model_configs["submodel"]:
+            self.embedder = BertModel.from_pretrained(
+                "bert-base-uncased", num_labels=num_class
+            ).last_hidden_state
+        elif "gpt2" in model_configs["submodel"]:
+            self.embedder = GPT2Model.from_pretrained("gpt2")
+        else:
+            raise NotImplemented
+
+        self.n_prototypes = model_configs["n_prototypes"]
+        self.proto_size = model_configs["proto_size"]
+
+        if model_configs["freeze_layers"]:
+            for param in self.embedder.parameters():
+                param.requires_grad = False
+
         # Prototype Layer:
-        n_prototypes = model_configs["n_prototypes"]
-        self.protolayer = nn.parameter.Parameter(
-            nn.init.uniform_(torch.empty(1, n_prototypes, model_configs["embed_dim"]),-1,1),
-            requires_grad=True,
-        )
+        self.protolayer = nn.Parameter(
+            nn.init.uniform_(
+                torch.empty(1, self.n_prototypes, self.enc_size, self.proto_size)
+            ),
 
         # Classify according to similarity
-        self.fc = nn.Linear(n_prototypes, num_class, bias=False)
+        self.fc = nn.Linear(self.n_prototypes, num_class, bias=False)
 
+          
     def forward(self, embedding, attention_mask):
         prototype_distances = self.compute_distance(embedding.unsqueeze(1))
         class_out = self.fc(prototype_distances)

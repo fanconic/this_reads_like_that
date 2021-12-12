@@ -1,6 +1,7 @@
+
 name: "Sentbert_20_Protos_CE_only"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "reviews"
@@ -15,7 +16,8 @@ train:
     verbose: True
 
 model:
-    name: "bert"
+    name: "proto"
+    submodel: "bert"
     embed_dim: 1024 #1024 for sentence + bert
     n_classes: 2
     freeze_layers: True
@@ -24,15 +26,19 @@ model:
     embedding: "sentence" #sentence or word
 
 
-#    name: "bert"
-#    embed_dim: 128
-#    n_classes: 4
-
 optimizer:
+    name: "adam"
     lr: 0.001
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]
+    T_0: 10
+
+scheduler:
+    name: "poly"
+    lr_reduce_factor: 0.1
+    patience_lr_reduce: 10
+    poly_reduce: 0.9
 
 loss:
     lambda1: 0.2

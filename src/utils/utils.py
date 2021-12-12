@@ -1,6 +1,6 @@
 import torch
 from torchtext.datasets import AG_NEWS, IMDB
-from src.models.models import MLP, GPT2, BERT, Proto_BERT, nes_torch
+from src.models.models import MLP, GPT2, BERT, ProtoNet, nes_torch
 from src.data.dataloader import build_loader
 import os
 import pickle
@@ -8,6 +8,8 @@ import nltk
 from nltk.tokenize.treebank import TreebankWordTokenizer, TreebankWordDetokenizer
 import torch.nn.functional as F
 import numpy as np
+
+from torch import nn, optim
 
 tok = TreebankWordTokenizer()
 detok = TreebankWordDetokenizer()
@@ -29,10 +31,84 @@ def get_model(vocab_size, model_configs):
         return GPT2(vocab_size, model_configs)
     elif name == "bert_baseline":
         return BERT(vocab_size, model_configs)
-    elif name == "bert":
-        return Proto_BERT(vocab_size, model_configs)
+    elif name == "proto":
+        return ProtoNet(vocab_size, model_configs)
     else:
         raise NotImplemented
+
+
+def get_optimizer(model, config):
+    """Resolve the optimizer according to the configs
+    Args:
+        model: model on which the optimizer is applied on
+        config: configuration dict
+    returns:
+        optimizer
+    """
+    if config["optimizer"]["name"] == "SGD":
+        optimizer = optim.SGD(
+            model.optim_parameters(),
+            lr=config["optimizer"]["lr"],
+            momentum=config["optimizer"]["momentum"],
+            weight_decay=config["optimizer"]["weight_decay"],
+        )
+    else:
+        optimizer = optim.Adam(
+            model.parameters(),
+            lr=config["optimizer"]["lr"],
+            betas=config["optimizer"]["betas"],
+            weight_decay=config["optimizer"]["weight_decay"],
+        )
+    return optimizer
+
+
+def get_scheduler(optimizer, config):
+    """Take the specified scheduler
+    Args:
+        optimizer: optimizer on which the scheduler is applied
+        config: configuration dict
+    returns:
+        resovled scheduler
+    """
+    scheduler_name = config["scheduler"]["name"]
+    assert scheduler_name in [
+        "reduce_on_plateau",
+        "step",
+        "poly",
+        "CosAnnWarmup",
+    ], "scheduler not Implemented"
+
+    if scheduler_name == "reduce_on_plateau":
+        scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+            optimizer,
+            mode="min",
+            factor=config["scheduler"]["lr_reduce_factor"],
+            patience=config["scheduler"]["patience_lr_reduce"],
+        )
+    elif scheduler_name == "step":
+        scheduler = optim.lr_scheduler.StepLR(
+            optimizer,
+            step_size=config["scheduler"]["patience_lr_reduce"],
+            gamma=config["scheduler"]["lr_reduce_factor"],
+        )
+    elif scheduler_name == "poly":
+        epochs = config["train"]["epochs"]
+        poly_reduce = config["scheduler"]["poly_reduce"]
+        lmbda = lambda epoch: (1 - (epoch - 1) / epochs) ** poly_reduce
+        scheduler = optim.lr_scheduler.LambdaLR(optimizer, lmbda)
+
+    elif scheduler_name == "CosAnnWarmup":
+        scheduler = optim.lr_scheduler.CosineAnnealingWarmRestarts(
+            optimizer,
+            T_0=config["optimizer"]["T0"],
+            T_mult=1,
+            eta_min=config["optimizer"]["lr"] * 1e-2,
+            last_epoch=-1,
+        )
+
+    else:
+        scheduler = None
+    return scheduler
 
 
 def load_data(name, **kwargs):
@@ -114,6 +190,15 @@ def convert_label(labels):
         elif label == "neg":
             converted_labels.append(1)
     return converted_labels
+
+
+def ned_torch(x1, x2, dim=1, eps=1e-8):
+    ned_2 = 0.5 * ((x1 - x2).var(dim=dim) / (x1.var(dim=dim) + x2.var(dim=dim) + eps))
+    return ned_2 ** 0.5
+
+
+def nes_torch(x1, x2, dim=1, eps=1e-8):
+    return 1 - ned_torch(x1, x2, dim, eps)
 
 
 def proto_loss(prototype_distances, label, model, config, device):

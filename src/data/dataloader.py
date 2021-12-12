@@ -46,22 +46,7 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         vocab = build_vocab(data_iter)
 
     def text_pipeline(x):
-        if "gpt2" in config["model"]["name"]:
-            tkizr = GPT2Tokenizer.from_pretrained(
-                config["model"]["name"], return_tensors="pt"
-            )
-            tkizr.pad_token = "[PAD]"
-            tokenized_text = tkizr(x)
-            return tokenized_text["input_ids"]
-        elif "bert" in config["model"]["name"]:
-            tkizr = BertTokenizer.from_pretrained(
-                "bert-base-uncased", return_tensors="pt"
-            )
-            tkizr.pad_token = "[PAD]"
-            tokenized_text = tkizr(x)
-            return tokenized_text["input_ids"]
-        else:
-            return vocab(tokenizer(x))
+        return vocab(tokenizer(x))
 
     def label_pipeline(x):
         return int(x) - 1
@@ -92,12 +77,10 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
             labels, text, offset
         """
         label_list, text_list, offsets = [], [], [0]
-        if "gpt2" in config["model"]["name"]:
-            tkizr = GPT2Tokenizer.from_pretrained(
-                config["model"]["name"], return_tensors="pt"
-            )
+        if "gpt2" in config["model"]["submodel"]:
+            tkizr = GPT2Tokenizer.from_pretrained("gpt2", return_tensors="pt")
             tkizr.pad_token = "[PAD]"
-        elif "bert" in config["model"]["name"]:
+        elif "bert" in config["model"]["submodel"]:
             tkizr = BertTokenizer.from_pretrained(
                 "bert-base-uncased", return_tensors="pt"
             )
@@ -115,7 +98,7 @@ def build_loader(data_iter, batch_size=8, device="cpu", vocab=None, config=None)
         )
 
     use_collate_lm = (
-        "gpt2" in config["model"]["name"] or "bert" in config["model"]["name"]
+        "gpt2" in config["model"]["submodel"] or "bert" in config["model"]["submodel"]
     )
     dataloader = DataLoader(
         data_iter,

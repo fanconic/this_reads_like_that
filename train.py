@@ -14,7 +14,7 @@ from src.utils.utils import proto_loss, load_model_and_dataloader
 import time
 import IPython
 from tqdm import tqdm
-from src.models.models import Proto_BERT
+from src.models.models import ProtoNet
 
 
 def set_seed(seed):
@@ -39,13 +39,9 @@ def main(config, random_state=0):
     # load model and data
     model, train_loader, val_loader, test_loader = load_model_and_dataloader(wandb, config, device)
 
-    # prepare the optimizer
-    optimizer = optim.Adam(
-        model.parameters(),
-        lr=config["optimizer"]["lr"],
-        betas=config["optimizer"]["betas"],
-        weight_decay=config["optimizer"]["weight_decay"],
-    )
+    # prepare teh optimizer
+    optimizer = get_optimizer(model, config)
+    scheduler = get_scheduler(optimizer, config)
 
     # loss function
     criterion = nn.CrossEntropyLoss()
@@ -56,8 +52,6 @@ def main(config, random_state=0):
         train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt2_bert_lm)
         val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm)
     test(model,test_loader,criterion,device,verbose,gpt2_bert_lm)
-        
-
     
 
 def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
@@ -69,7 +63,7 @@ def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt
     for idx, (label, text, mask) in enumerate(train_loader):
         text, label, mask = text.to(device), label.to(device), mask.to(device)
         optimizer.zero_grad()
-        if isinstance(model, Proto_BERT):
+        if isinstance(model, ProtoNet):
             predicted_label, prototype_distances = model(text, mask)
         else:
             predicted_label = model(text, mask)
@@ -77,7 +71,7 @@ def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt
             predicted_label.logits if gpt2_bert_lm else predicted_label
         )
         ce_loss = criterion(predicted_label, label)
-        if isinstance(model, Proto_BERT):
+        if isinstance(model, ProtoNet):
             distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
                 prototype_distances, label, model, config, device
             )
@@ -93,6 +87,7 @@ def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt
             loss = ce_loss
         loss.backward()
         optimizer.step()
+        scheduler.step()
 
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
@@ -117,8 +112,8 @@ def val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(val_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
-
-            if isinstance(model, Proto_BERT):
+            optimizer.zero_grad()
+            if isinstance(model, ProtoNet):
                 predicted_label, prototype_distances = model(text, mask)
             else:
                 predicted_label = model(text, mask)
@@ -126,11 +121,10 @@ def val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
             predicted_label = (
                 predicted_label.logits if gpt2_bert_lm else predicted_label
             )
-
             # calc loss
             val_ce_loss = criterion(predicted_label, label)
 
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
                     prototype_distances, label, model, config, device
                 )
@@ -180,6 +174,7 @@ def test(model,test_loader,criterion,device,verbose,gpt2_bert_lm):
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
+            
             if isinstance(model, Proto_BERT):
                 predicted_label, prototype_distances = model(text, mask)
             else:
@@ -189,7 +184,7 @@ def test(model,test_loader,criterion,device,verbose,gpt2_bert_lm):
             )
             test_ce_loss = criterion(predicted_label, label)
 
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
                     prototype_distances, label, model, config, device
                 )
@@ -215,9 +210,6 @@ def test(model,test_loader,criterion,device,verbose,gpt2_bert_lm):
                 "test_accuracy": total_acc / total_count,
             }
         )    
-
-
-
 
 
 if __name__ == "__main__":
