@@ -140,7 +140,6 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(val_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
-            optimizer.zero_grad()
             if isinstance(model, ProtoNet):
                 predicted_label, prototype_distances = model(text, mask)
             else:
