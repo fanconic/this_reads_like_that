@@ -1,6 +1,6 @@
-name: "Sentbert_20_Protos_CE_only"
+name: "SentBert_stepscheduler_100e"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "reviews"
@@ -11,12 +11,12 @@ data:
 
 train:
     batch_size: 128
-    epochs: 30
+    epochs: 100
     verbose: True
 
 model:
     name: "proto"
-    submodel: "bert"
+    submodel: "bert" #if not a protonet, called it same as "name"
     embed_dim: 1024 #1024 for sentence + bert
     n_classes: 2
     freeze_layers: True
@@ -33,9 +33,9 @@ optimizer:
     T_0: 10
 
 scheduler:
-    name: "poly"
-    lr_reduce_factor: 0.1
-    patience_lr_reduce: 10
+    name: "step"
+    lr_reduce_factor: 0.5
+    patience_lr_reduce: 30
     poly_reduce: 0.9
 
 loss:

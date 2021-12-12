@@ -66,9 +66,10 @@ def main(config, random_state=0):
             device,
             verbose,
             gpt2_bert_lm,
-            scheduler,
         )
         val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
+
+        scheduler.step()
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
 
 
@@ -82,7 +83,6 @@ def train(
     device,
     verbose,
     gpt2_bert_lm,
-    scheduler,
 ):
     if verbose:
         train_loader = tqdm(train_loader)
@@ -114,7 +114,6 @@ def train(
             loss = ce_loss
         loss.backward()
         optimizer.step()
-        scheduler.step()
 
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
@@ -203,7 +202,7 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
         for idx, (label, text, mask) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
 
-            if isinstance(model, Proto_BERT):
+            if isinstance(model, ProtoNet):
                 predicted_label, prototype_distances = model(text, mask)
             else:
                 predicted_label = model(text, mask)

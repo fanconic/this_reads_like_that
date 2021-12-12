@@ -71,12 +71,6 @@ def get_scheduler(optimizer, config):
         resovled scheduler
     """
     scheduler_name = config["scheduler"]["name"]
-    assert scheduler_name in [
-        "reduce_on_plateau",
-        "step",
-        "poly",
-        "CosAnnWarmup",
-    ], "scheduler not Implemented"
 
     if scheduler_name == "reduce_on_plateau":
         scheduler = optim.lr_scheduler.ReduceLROnPlateau(
@@ -278,7 +272,7 @@ def save_embedding(embedding, mask, label, config, set_name):
 
 def load_embedding(config, set_name):
     path = os.path.join("./src/data/embedding", config["data"]["data_name"])
-    name = config["model"]["name"] + "_" + set_name
+    name = config["model"]["submodel"] + "_" + set_name
     path_e = os.path.join(path, name + ".pt")
     assert os.path.isfile(path_e)
     path_m = os.path.join(path, name + "_mask.pt")
