@@ -78,46 +78,31 @@ class ProtoNet(nn.Module):
         super(ProtoNet, self).__init__()
         num_class = model_configs["n_classes"]
         self.metric = model_configs["similaritymeasure"]
-        if "bert" in model_configs["submodel"]:
-            self.embedder = BertModel.from_pretrained(
-                "bert-base-uncased", num_labels=num_class
-            ).last_hidden_state
-        elif "gpt2" in model_configs["submodel"]:
-            self.embedder = GPT2Model.from_pretrained("gpt2")
-        else:
-            raise NotImplemented
-
         self.n_prototypes = model_configs["n_prototypes"]
-        self.proto_size = model_configs["proto_size"]
-
-        if model_configs["freeze_layers"]:
-            for param in self.embedder.parameters():
-                param.requires_grad = False
 
         # Prototype Layer:
-        self.protolayer = nn.Parameter(
+        self.protolayer = nn.parameter.Parameter(
             nn.init.uniform_(
-                torch.empty(1, self.n_prototypes, self.enc_size, self.proto_size)
+                torch.empty(1, self.n_prototypes, model_configs["embed_dim"]), -1, 1
             ),
+            requires_grad=True,
+        )
 
         # Classify according to similarity
         self.fc = nn.Linear(self.n_prototypes, num_class, bias=False)
 
-          
     def forward(self, embedding, attention_mask):
         prototype_distances = self.compute_distance(embedding.unsqueeze(1))
         class_out = self.fc(prototype_distances)
         return class_out, prototype_distances
 
-    def compute_distance(self, embedding):        
+    def compute_distance(self, embedding):
         if self.metric == "cosine":
             prototype_distances = -F.cosine_similarity(
                 embedding, self.protolayer, dim=-1
             )
         elif self.metric == "L2":
-            prototype_distances = -nes_torch(
-                embedding, self.protolayer, dim=-1
-            )
+            prototype_distances = -nes_torch(embedding, self.protolayer, dim=-1)
         else:
             raise NotImplemented
         return prototype_distances
@@ -133,19 +118,28 @@ class ProtoNet(nn.Module):
         return self.fc.weight.T.cpu().detach().numpy()
 
     def compute_embedding(self, x, config, device):
-        if config["model"]["name"] == 'bert' and config["model"]["embedding"] == "sentence":
-            LM = SentenceTransformer('bert-large-nli-mean-tokens', device=device)
+        if (
+            config["model"]["submodel"] == "bert"
+            and config["model"]["embedding"] == "sentence"
+        ):
+            LM = SentenceTransformer("bert-large-nli-mean-tokens", device=device)
             labels = torch.empty((len(x)))
-            embedding = torch.empty((len(x),1024))
-            for idx, (label,input) in enumerate(x):
+            embedding = torch.empty((len(x), 1024))
+            for idx, (label, input) in enumerate(x):
                 labels[idx] = label
-                embedding[idx] = LM.encode(input, convert_to_tensor=True, device=device).cpu().detach()
+                embedding[idx] = (
+                    LM.encode(input, convert_to_tensor=True, device=device)
+                    .cpu()
+                    .detach()
+                )
                 if idx % 100 == 0:
                     print(idx)
+        else:
+            raise NotImplemented
+
         for param in LM.parameters():
             param.requires_grad = False
         if len(embedding.size()) == 1:
             embedding = embedding.unsqueeze(0).unsqueeze(0)
         mask = torch.ones(embedding.shape)  # required for attention models
-        return embedding, mask, (labels-1)
-        
+        return embedding, mask, (labels - 1)

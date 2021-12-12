@@ -240,9 +240,16 @@ def proto_loss(prototype_distances, label, model, config, device):
             .squeeze()
             .clamp(min=0.8)
         )
-    elif config["model"]["similaritymeasure"] == 'L2':
-       divers_loss = torch.mean(nes_torch(model.protolayer[:, comb][:, :, 0],
-                                          model.protolayer[:, comb][:, :, 1], dim=2).squeeze().clamp(min=0.8))
+    elif config["model"]["similaritymeasure"] == "L2":
+        divers_loss = torch.mean(
+            nes_torch(
+                model.protolayer[:, comb][:, :, 0],
+                model.protolayer[:, comb][:, :, 1],
+                dim=2,
+            )
+            .squeeze()
+            .clamp(min=0.8)
+        )
 
     # if args.soft:
     #    soft_loss = - torch.mean(F.cosine_similarity(model.protolayer[:, args.soft[1]], args.soft[4].squeeze(0),
@@ -258,29 +265,31 @@ def proto_loss(prototype_distances, label, model, config, device):
 
 
 def save_embedding(embedding, mask, label, config, set_name):
-    path = os.path.join('./src/data/embedding', config["data"]["data_name"])
+    path = os.path.join("./src/data/embedding", config["data"]["data_name"])
     os.makedirs(path, exist_ok=True, mode=0o777)
-    name = config["model"]["name"] + '_' + set_name
-    path_e = os.path.join(path, name + '.pt')
+    name = config["model"]["name"] + "_" + set_name
+    path_e = os.path.join(path, name + ".pt")
     torch.save(embedding, path_e)
-    path_m = os.path.join(path, name + '_mask.pt')
+    path_m = os.path.join(path, name + "_mask.pt")
     torch.save(mask, path_m)
-    path_l = os.path.join(path, name + '_label.pt')
+    path_l = os.path.join(path, name + "_label.pt")
     torch.save(label, path_l)
 
+
 def load_embedding(config, set_name):
-    path = os.path.join('./src/data/embedding', config["data"]["data_name"])
-    name = config["model"]["name"] + '_' + set_name
-    path_e = os.path.join(path, name + '.pt')
+    path = os.path.join("./src/data/embedding", config["data"]["data_name"])
+    name = config["model"]["name"] + "_" + set_name
+    path_e = os.path.join(path, name + ".pt")
     assert os.path.isfile(path_e)
-    path_m = os.path.join(path, name + '_mask.pt')
+    path_m = os.path.join(path, name + "_mask.pt")
     assert os.path.isfile(path_m)
-    path_l = os.path.join(path, name + '_label.pt')
+    path_l = os.path.join(path, name + "_label.pt")
     assert os.path.isfile(path_l)
-    embedding = torch.load(path_e, map_location=torch.device('cpu'))
-    mask = torch.load(path_m, map_location=torch.device('cpu'))
-    label = torch.load(path_l, map_location=torch.device('cpu')).to(torch.long)
+    embedding = torch.load(path_e, map_location=torch.device("cpu"))
+    mask = torch.load(path_m, map_location=torch.device("cpu"))
+    label = torch.load(path_l, map_location=torch.device("cpu")).to(torch.long)
     return embedding, mask, label
+
 
 def load_model_and_dataloader(wandb, config, device):
     train_iter, test_iter = load_data(
@@ -304,7 +313,10 @@ def load_model_and_dataloader(wandb, config, device):
     # build the tokenized vocabulary:
     if not config["model"]["embedding"] == "sentence":
         train_loader, vocab = build_loader(
-            train_ds, device=device, batch_size=config["train"]["batch_size"], config=config
+            train_ds,
+            device=device,
+            batch_size=config["train"]["batch_size"],
+            config=config,
         )
         val_loader, _ = build_loader(
             val_ds,
@@ -321,34 +333,51 @@ def load_model_and_dataloader(wandb, config, device):
             config=config,
         )
 
-
-        
-
         # get the model
-        model = get_model(vocab_size=len(vocab), model_configs=config["model"]).to(device)
+        model = get_model(vocab_size=len(vocab), model_configs=config["model"]).to(
+            device
+        )
         wandb.watch(model)
-    else: #SentBert with embeddings beforehand
+    else:  # SentBert with embeddings beforehand
         model = get_model(vocab_size=None, model_configs=config["model"]).to(device)
         wandb.watch(model)
         if not config["data"]["compute_emb"]:
-            embedding_train, mask_train, labels_train = load_embedding(config, 'train')
-            embedding_val, mask_val, labels_val = load_embedding(config, 'val')
-            embedding_test, mask_test, labels_test = load_embedding(config, 'test')
+            embedding_train, mask_train, labels_train = load_embedding(config, "train")
+            embedding_val, mask_val, labels_val = load_embedding(config, "val")
+            embedding_test, mask_test, labels_test = load_embedding(config, "test")
         else:
-            embedding_train, mask_train, labels_train = model.compute_embedding(train_ds, config, device)
-            embedding_val, mask_val, labels_val = model.compute_embedding(val_ds, config, device)
-            embedding_test, mask_test, labels_test = model.compute_embedding(test_ds, config, device)
-            save_embedding(embedding_train, mask_train, labels_train, config, 'train')
-            save_embedding(embedding_val, mask_val, labels_val, config, 'val')
-            save_embedding(embedding_test, mask_test, labels_test, config, 'test')
-            torch.cuda.empty_cache()  # free up language model from GPU            
-        train_loader = torch.utils.data.DataLoader(list(zip(labels_train, embedding_train, mask_train)),
-                                                batch_size=config["train"]["batch_size"], shuffle=True, pin_memory=True,
-                                                num_workers=0)
-        val_loader = torch.utils.data.DataLoader(list(zip(labels_val,embedding_val, mask_val)),
-                                              batch_size=config["train"]["batch_size"], shuffle=False, pin_memory=True, num_workers=0)
-        test_loader = torch.utils.data.DataLoader(list(zip(labels_test, embedding_test, mask_test)),
-                                               batch_size=config["train"]["batch_size"], shuffle=False, pin_memory=True,
-                                               num_workers=0)
+            embedding_train, mask_train, labels_train = model.compute_embedding(
+                train_ds, config, device
+            )
+            embedding_val, mask_val, labels_val = model.compute_embedding(
+                val_ds, config, device
+            )
+            embedding_test, mask_test, labels_test = model.compute_embedding(
+                test_ds, config, device
+            )
+            save_embedding(embedding_train, mask_train, labels_train, config, "train")
+            save_embedding(embedding_val, mask_val, labels_val, config, "val")
+            save_embedding(embedding_test, mask_test, labels_test, config, "test")
+            torch.cuda.empty_cache()  # free up language model from GPU
+        train_loader = torch.utils.data.DataLoader(
+            list(zip(labels_train, embedding_train, mask_train)),
+            batch_size=config["train"]["batch_size"],
+            shuffle=True,
+            pin_memory=True,
+            num_workers=0,
+        )
+        val_loader = torch.utils.data.DataLoader(
+            list(zip(labels_val, embedding_val, mask_val)),
+            batch_size=config["train"]["batch_size"],
+            shuffle=False,
+            pin_memory=True,
+            num_workers=0,
+        )
+        test_loader = torch.utils.data.DataLoader(
+            list(zip(labels_test, embedding_test, mask_test)),
+            batch_size=config["train"]["batch_size"],
+            shuffle=False,
+            pin_memory=True,
+            num_workers=0,
+        )
     return model, train_loader, val_loader, test_loader
-

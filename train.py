@@ -37,7 +37,9 @@ def main(config, random_state=0):
     gpt2_bert_lm = config["model"]["name"] in ["gpt2", "bert_baseline"]
 
     # load model and data
-    model, train_loader, val_loader, test_loader = load_model_and_dataloader(wandb, config, device)
+    model, train_loader, val_loader, test_loader = load_model_and_dataloader(
+        wandb, config, device
+    )
 
     # prepare teh optimizer
     optimizer = get_optimizer(model, config)
@@ -49,12 +51,32 @@ def main(config, random_state=0):
     # training loop
     epochs = config["train"]["epochs"]
     for epoch in range(epochs):
-        train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt2_bert_lm)
-        val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm)
-    test(model,test_loader,criterion,device,verbose,gpt2_bert_lm)
-    
+        train(
+            model,
+            train_loader,
+            optimizer,
+            criterion,
+            epoch,
+            epochs,
+            device,
+            verbose,
+            gpt2_bert_lm,
+        )
+        val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
+    test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
 
-def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
+
+def train(
+    model,
+    train_loader,
+    optimizer,
+    criterion,
+    epoch,
+    epochs,
+    device,
+    verbose,
+    gpt2_bert_lm,
+):
     if verbose:
         train_loader = tqdm(train_loader)
     total_acc, total_count = 0, 0
@@ -67,9 +89,7 @@ def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt
             predicted_label, prototype_distances = model(text, mask)
         else:
             predicted_label = model(text, mask)
-        predicted_label = (
-            predicted_label.logits if gpt2_bert_lm else predicted_label
-        )
+        predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
         ce_loss = criterion(predicted_label, label)
         if isinstance(model, ProtoNet):
             distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
@@ -92,18 +112,19 @@ def train(model,train_loader,optimizer,criterion,epoch,epochs,device,verbose,gpt
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
         total_count += label.size(0)
-        
+
         if verbose:
             train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
             train_loader.set_postfix(loss=loss.item(), acc=total_acc / total_count)
-        wandb.log({"train_loss": loss, "train_accuracy": total_acc / total_count}) 
+        wandb.log({"train_loss": loss, "train_accuracy": total_acc / total_count})
     print(
-            "| epoch {:3d} | training accuracy {:8.3f}".format(
-                epoch, total_acc / total_count
-            )
-        )          
+        "| epoch {:3d} | training accuracy {:8.3f}".format(
+            epoch, total_acc / total_count
+        )
+    )
 
-def val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
+
+def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm):
     val_total_acc, val_total_count, val_losses = 0, 0, []
     if verbose:
         val_loader = tqdm(val_loader)
@@ -149,12 +170,12 @@ def val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
                     loss=val_loss.item(), acc=val_total_acc / val_total_count
                 )
     wandb.log(
-{
-    "epoch": epoch,
-    "val_loss": sum(val_losses)/len(val_losses), 
-    "val_accuracy": val_total_acc / val_total_count,
-}
-)    
+        {
+            "epoch": epoch,
+            "val_loss": sum(val_losses) / len(val_losses),
+            "val_accuracy": val_total_acc / val_total_count,
+        }
+    )
 
     # end of epoch
     print(
@@ -163,8 +184,9 @@ def val(model,val_loader,criterion,epoch,epochs,device,verbose,gpt2_bert_lm):
         )
     )
 
-def test(model,test_loader,criterion,device,verbose,gpt2_bert_lm):
-# Test the model
+
+def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
+    # Test the model
     if verbose:
         test_loader = tqdm(test_loader)
     model.eval()
@@ -174,7 +196,7 @@ def test(model,test_loader,criterion,device,verbose,gpt2_bert_lm):
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
-            
+
             if isinstance(model, Proto_BERT):
                 predicted_label, prototype_distances = model(text, mask)
             else:
@@ -209,7 +231,7 @@ def test(model,test_loader,criterion,device,verbose,gpt2_bert_lm):
                 "test_loss": sum(test_losses) / len(test_losses),
                 "test_accuracy": total_acc / total_count,
             }
-        )    
+        )
 
 
 if __name__ == "__main__":

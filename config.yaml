@@ -1,7 +1,6 @@
-
 name: "Sentbert_20_Protos_CE_only"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
     dataset: "reviews"
@@ -25,7 +24,6 @@ model:
     similaritymeasure: "cosine"
     embedding: "sentence" #sentence or word
 
-
 optimizer:
     name: "adam"
     lr: 0.001
@@ -46,4 +44,3 @@ loss:
     lambda3: 0.1
     lambda4: 0.3
     lambda5: 0.001
-
