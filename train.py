@@ -10,7 +10,12 @@ import pandas as pd
 import random
 import os
 import numpy as np
-from src.utils.utils import proto_loss, load_model_and_dataloader
+from src.utils.utils import (
+    proto_loss,
+    load_model_and_dataloader,
+    get_optimizer,
+    get_scheduler,
+)
 import time
 import IPython
 from tqdm import tqdm
@@ -61,6 +66,7 @@ def main(config, random_state=0):
             device,
             verbose,
             gpt2_bert_lm,
+            scheduler,
         )
         val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
@@ -76,6 +82,7 @@ def train(
     device,
     verbose,
     gpt2_bert_lm,
+    scheduler,
 ):
     if verbose:
         train_loader = tqdm(train_loader)
