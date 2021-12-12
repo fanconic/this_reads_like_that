@@ -1,4 +1,5 @@
-name: "test_protogpt2_2"
+
+name: "Sentbert_20_Protos_CE_only"
 random_state: 42
 wandb_logging: True
 
@@ -7,28 +8,23 @@ data:
     val_size: 0.2
     data_name: "rt-polarity"
     data_dir: "./src/data"
+    compute_emb: False
 
 train:
     batch_size: 128
-    epochs: 10
-    verbose: False
+    epochs: 30
+    verbose: True
 
 model:
     name: "proto"
-    submodel: "gpt2"
-    embed_dim: 768
+    submodel: "bert"
+    embed_dim: 1024 #1024 for sentence + bert
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20
-    similaritymeasure: "L2"
-    proto_size: 1
-    attention: False
-    dilated: [1]
+    similaritymeasure: "cosine"
+    embedding: "sentence" #sentence or word
 
-
-#    name: "bert"
-#    embed_dim: 128
-#    n_classes: 4
 
 optimizer:
     name: "adam"
