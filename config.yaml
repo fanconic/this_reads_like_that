@@ -1,6 +1,6 @@
-name: "SentBert_stepscheduler_100e"
+name: "SentBert"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
     dataset: "reviews"
@@ -20,9 +20,10 @@ model:
     embed_dim: 1024 #1024 for sentence + bert
     n_classes: 2
     freeze_layers: True
-    n_prototypes: 20
-    similaritymeasure: "cosine"
+    n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
+    similaritymeasure: "cosine" #L2 or cosine
     embedding: "sentence" #sentence or word
+    project: True
 
 optimizer:
     name: "adam"

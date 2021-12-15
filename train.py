@@ -15,6 +15,7 @@ from src.utils.utils import (
     load_model_and_dataloader,
     get_optimizer,
     get_scheduler,
+    project
 )
 import time
 import IPython
@@ -68,6 +69,16 @@ def main(config, random_state=0):
             gpt2_bert_lm,
         )
         val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
+        # project prototypes all 5 Epochs. Start projection after 20% of epochs and let last 3 epochs be only final layer training
+        if (epoch + 1) % 5 == 0 and config["model"]["project"] and (epochs * 2 // 10) < (epoch + 1) < (epochs-3):
+            with torch.no_grad():
+                model = project(config, model, train_loader, device)
+                assert model.protolayer.requires_grad == True
+        # final projection, train only classification layer
+        if (epoch + 1) == (epochs-3):
+            with torch.no_grad():
+                model = project(config, model, train_loader, device)
+                model.protolayer.requires_grad = False
 
         scheduler.step()
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)

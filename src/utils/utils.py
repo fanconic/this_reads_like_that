@@ -375,3 +375,59 @@ def load_model_and_dataloader(wandb, config, device):
             num_workers=0,
         )
     return model, train_loader, val_loader, test_loader
+
+
+
+def get_nearest_sent(config, model, train_loader, device): 
+    #Easier code which might only work for sentence
+    model.eval()
+    dist = []
+    labels= []
+    embeddings = []
+    with torch.no_grad():
+        for idx, (label, text, mask) in enumerate(train_loader):
+            text = text.to(device)
+            mask = mask.to(device)
+            distances, _ = model.get_dist(text.unsqueeze(1), mask)
+            embeddings.append(text)
+            labels.append(label)
+            prototypes_of_correct_class = torch.t(
+            config["model"]["prototype class"][:, label].to(device))
+            #Only look at embeddings of same class
+            proto_dist = prototypes_of_correct_class*(distances-100)+100 # Ugly hack s.t. distance of non-classes are 100 (=big) 
+            dist.append(proto_dist)
+    dist = torch.cat(dist) 
+    values, nearest_ids = torch.topk(dist, 5, dim=0, largest=False) 
+    assert torch.max(values) < 100 #Check that hack works, otherwise datapoint from other class is closer to prototype
+    nearest_ids = nearest_ids.cpu().detach().numpy().T 
+    for j in range(1,5):
+        
+        for i in range(len(nearest_ids[:,0])):
+            if np.count_nonzero(nearest_ids[:,0] == nearest_ids[i,0]) != 1:
+                nearest_ids[i,0] = nearest_ids[i,j]
+                
+    assert len(np.unique(nearest_ids[:,0])) == len(nearest_ids[:,0])
+    new_proto_emb = torch.cat(embeddings)[nearest_ids[:,0],:] #model.protolayer[:,13:15] goes to nan in optimizer
+    return new_proto_emb
+
+
+
+def project(config, model, train_loader, device):
+    # project prototypes
+    if config["model"]["embedding"] == 'sentence':
+        new_proto_emb = get_nearest_sent(config, model, train_loader, device)
+        new_proto = new_proto_emb
+    elif config["model"]["embedding"] == 'word':
+        print("Word projection, not yet implemented")
+        assert 1 == 2
+        #proto_ids, _, [nearest_sent, nearest_words] = get_nearest(model, train_batches_unshuffled, text_train,
+        #                                                          labels_train, device)
+        #new_proto = embedding_train[nearest_sent[:, np.newaxis].repeat(config["model"]["n_words_per_proto"], axis=1), nearest_words, :]
+    else: print("Specify sentence or word in config")
+    new_proto = new_proto.view(model.protolayer.shape)
+    model.protolayer.copy_(new_proto)
+    # give prototypes their "true" label
+    #s = 'label'
+    #proto_labels = torch.tensor([int(p[p.index(s) + len(s) + 1]) for p in proto_ids])
+    #args.prototype_class_identity.copy_(torch.stack((1 - proto_labels, proto_labels), dim=1))
+    return model #, args
