@@ -225,26 +225,33 @@ def proto_loss(prototype_distances, label, model, config, device):
     sep_loss = -torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
     # diversity loss, assures that prototypes are not too close
-    comb = torch.combinations(torch.arange(0, config["model"]["n_prototypes"]), r=2)
+    comb = torch.cartesian_prod(torch.arange(0, config["model"]["n_prototypes"]),torch.arange(0, config["model"]["n_prototypes"]))
     if config["model"]["similaritymeasure"] == "cosine":
-        divers_loss = torch.mean(
-            F.cosine_similarity(
-                model.protolayer[:, comb][:, :, 0], model.protolayer[:, comb][:, :, 1]
-            )
-            .squeeze()
-            .clamp(min=0.8)
-        )
+        
+        proto_sim = F.cosine_similarity(
+            model.protolayer[:, comb][:, :, 0], model.protolayer[:, comb][:, :, 1],dim=2
+        ).squeeze().reshape((20,20))
+        proto_sim += torch.diag(-3*torch.ones(config["model"]["n_prototypes"])).to(device) #decrease self-similarity to not be max
+        proto_min_sim, _ = torch.max(proto_sim, dim = 1)
+        divers_loss = torch.mean(proto_min_sim)
     elif config["model"]["similaritymeasure"] == "L2":
-        divers_loss = torch.mean(
-            nes_torch(
-                model.protolayer[:, comb][:, :, 0],
-                model.protolayer[:, comb][:, :, 1],
-                dim=2,
-            )
-            .squeeze()
-            .clamp(min=0.8)
-        )
-
+        
+        #torch.mean(
+        #    nes_torch(
+        #        model.protolayer[:, comb][:, :, 0],
+        #        model.protolayer[:, comb][:, :, 1],
+        #        dim=2,
+        #    )
+        #    .squeeze()
+        #    .clamp(min=0.8)
+        #)
+        proto_dist = torch.cdist(model.protolayer,
+                model.protolayer, p=2)/np.sqrt(config["model"]["embed_dim"])
+        proto_dist += torch.diag(200*torch.ones(config["model"]["n_prototypes"])).to(device) #Increase self distance to not pick this as closest
+        proto_min_dist, _ = torch.min(proto_dist, dim = 1)
+        assert torch.all(proto_min_dist<200) #Set self-distance to 200 -> Don't take that
+        divers_loss = -torch.mean(proto_min_dist)
+                
     # if args.soft:
     #    soft_loss = - torch.mean(F.cosine_similarity(model.protolayer[:, args.soft[1]], args.soft[4].squeeze(0),
     #                                                 dim=1).squeeze().clamp(max=args.soft[3]))
@@ -397,14 +404,15 @@ def get_nearest_sent(config, model, train_loader, device):
             proto_dist = prototypes_of_correct_class*(distances-100)+100 # Ugly hack s.t. distance of non-classes are 100 (=big) 
             dist.append(proto_dist)
     dist = torch.cat(dist) 
-    values, nearest_ids = torch.topk(dist, 5, dim=0, largest=False) 
+    values, nearest_ids = torch.topk(dist, 20, dim=0, largest=False) 
     assert torch.max(values) < 100 #Check that hack works, otherwise datapoint from other class is closer to prototype
     nearest_ids = nearest_ids.cpu().detach().numpy().T 
-    for j in range(1,5):
+    for j in range(1,20):
         
         for i in range(len(nearest_ids[:,0])):
             if np.count_nonzero(nearest_ids[:,0] == nearest_ids[i,0]) != 1:
                 nearest_ids[i,0] = nearest_ids[i,j]
+        if len(np.unique(nearest_ids[:,0])) == len(nearest_ids[:,0]): break
                 
     assert len(np.unique(nearest_ids[:,0])) == len(nearest_ids[:,0])
     new_proto_emb = torch.cat(embeddings)[nearest_ids[:,0],:] #model.protolayer[:,13:15] goes to nan in optimizer

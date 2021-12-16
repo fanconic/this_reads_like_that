@@ -125,7 +125,8 @@ def train(
             loss = ce_loss
         loss.backward()
         optimizer.step()
-
+        with torch.no_grad():
+                model.fc.weight.copy_(model.fc.weight.clamp(max=0.0))
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
         total_count += label.size(0)

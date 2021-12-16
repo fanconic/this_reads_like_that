@@ -42,6 +42,6 @@ scheduler:
 loss:
     lambda1: 0.2
     lambda2: 0.2
-    lambda3: 0.1
-    lambda4: 0.3
+    lambda3: 0.3
+    lambda4: 0.1
     lambda5: 0.001
