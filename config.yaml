@@ -1,4 +1,4 @@
-name: "SentBert"
+name: "SentBert_MV_Cosine"
 random_state: 42
 wandb_logging: False
 
@@ -26,7 +26,7 @@ model:
     project: True
 
 optimizer:
-    name: "adam"
+    name: "Adam" #SGD or Adam
     lr: 0.001
     momentum: 0.9
     weight_decay: 0.0005

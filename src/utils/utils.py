@@ -47,7 +47,7 @@ def get_optimizer(model, config):
     """
     if config["optimizer"]["name"] == "SGD":
         optimizer = optim.SGD(
-            model.optim_parameters(),
+            model.parameters(),
             lr=config["optimizer"]["lr"],
             momentum=config["optimizer"]["momentum"],
             weight_decay=config["optimizer"]["weight_decay"],
@@ -230,7 +230,7 @@ def proto_loss(prototype_distances, label, model, config, device):
         
         proto_sim = F.cosine_similarity(
             model.protolayer[:, comb][:, :, 0], model.protolayer[:, comb][:, :, 1],dim=2
-        ).squeeze().reshape((20,20))
+        ).squeeze().reshape((config["model"]["n_prototypes"],config["model"]["n_prototypes"]))
         proto_sim += torch.diag(-3*torch.ones(config["model"]["n_prototypes"])).to(device) #decrease self-similarity to not be max
         proto_min_sim, _ = torch.max(proto_sim, dim = 1)
         divers_loss = torch.mean(proto_min_sim)
@@ -367,6 +367,13 @@ def load_model_and_dataloader(wandb, config, device):
             pin_memory=True,
             num_workers=0,
         )
+        train_loader_unshuffled = torch.utils.data.DataLoader(
+            list(zip(labels_train, embedding_train, mask_train)),
+            batch_size=config["train"]["batch_size"],
+            shuffle=False,
+            pin_memory=True,
+            num_workers=0,
+        )
         val_loader = torch.utils.data.DataLoader(
             list(zip(labels_val, embedding_val, mask_val)),
             batch_size=config["train"]["batch_size"],
@@ -381,7 +388,7 @@ def load_model_and_dataloader(wandb, config, device):
             pin_memory=True,
             num_workers=0,
         )
-    return model, train_loader, val_loader, test_loader
+    return model, train_loader, val_loader, test_loader, train_ds, train_loader_unshuffled
 
 
 
@@ -420,7 +427,7 @@ def get_nearest_sent(config, model, train_loader, device):
 
 
 
-def project(config, model, train_loader, device):
+def project(config, model, train_loader, device, last_proj):
     # project prototypes
     if config["model"]["embedding"] == 'sentence':
         new_proto_emb = get_nearest_sent(config, model, train_loader, device)
@@ -434,8 +441,45 @@ def project(config, model, train_loader, device):
     else: print("Specify sentence or word in config")
     new_proto = new_proto.view(model.protolayer.shape)
     model.protolayer.copy_(new_proto)
+    if last_proj: #Newly define Prototypes for freezing them, otherwise Adam continues updating bcs of Running Average
+        model.protolayer = nn.parameter.Parameter(
+            new_proto,
+            requires_grad=False,
+        )
     # give prototypes their "true" label
     #s = 'label'
     #proto_labels = torch.tensor([int(p[p.index(s) + len(s) + 1]) for p in proto_ids])
     #args.prototype_class_identity.copy_(torch.stack((1 - proto_labels, proto_labels), dim=1))
     return model #, args
+
+
+def visualization(config, model, train_ds, train_loader_unshuffled, device):
+    #Easier code which might only work for sentence
+    model.eval()
+    dist = []
+    labels= []
+    embeddings = []
+    with torch.no_grad():
+        for idx, (label, text, mask) in enumerate(train_loader_unshuffled):
+            text = text.to(device)
+            mask = mask.to(device)
+            distances, _ = model.get_dist(text.unsqueeze(1), mask)
+            embeddings.append(text)
+            labels.append(label)
+            prototypes_of_correct_class = torch.t(
+            config["model"]["prototype class"][:, label].to(device))
+            #Only look at embeddings of same class
+            proto_dist = prototypes_of_correct_class*(distances-100)+100 # Ugly hack s.t. distance of non-classes are 100 (=big) 
+            dist.append(proto_dist)
+    dist = torch.cat(dist) 
+    _, nearest_ids = torch.topk(dist, 1, dim=0, largest=False) 
+    nearest_ids = nearest_ids.cpu().detach().numpy().T.squeeze()
+    texts = []
+    for idx, (label, text) in enumerate(train_ds):
+        texts.append(text)
+    prototext = [texts[i] for i in nearest_ids]
+    for j in range(config["model"]["n_classes"]):
+        index = np.where(config["model"]["prototype class"][:,j]==1)[0]
+        print("Class {}:".format(j))  #For RT: 0 = Bad, 1 = Good
+        print(np.array([prototext[i] for i in index]), sep='\n')
+    

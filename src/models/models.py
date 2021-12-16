@@ -126,7 +126,7 @@ class ProtoNet(nn.Module):
         ):
             LM = SentenceTransformer("bert-large-nli-mean-tokens", device=device)
             labels = torch.empty((len(x)))
-            embedding = torch.empty((len(x), 1024))
+            embedding = torch.empty((len(x), config["model"]["embed_dim"]))
             for idx, (label, input) in enumerate(x):
                 labels[idx] = label
                 embedding[idx] = (
