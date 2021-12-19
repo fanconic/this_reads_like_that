@@ -8,8 +8,9 @@ import nltk
 from nltk.tokenize.treebank import TreebankWordTokenizer, TreebankWordDetokenizer
 import torch.nn.functional as F
 import numpy as np
-
+from transformers import AutoTokenizer, AutoModel
 from torch import nn, optim
+import re
 
 tok = TreebankWordTokenizer()
 detok = TreebankWordDetokenizer()
@@ -251,6 +252,9 @@ def proto_loss(prototype_distances, label, model, config, device):
         proto_min_dist, _ = torch.min(proto_dist, dim = 1)
         assert torch.all(proto_min_dist<200) #Set self-distance to 200 -> Don't take that
         divers_loss = -torch.mean(proto_min_dist)
+    else: 
+        print("loss not defined")
+        assert False
                 
     # if args.soft:
     #    soft_loss = - torch.mean(F.cosine_similarity(model.protolayer[:, args.soft[1]], args.soft[4].squeeze(0),
@@ -452,8 +456,14 @@ def project(config, model, train_loader, device, last_proj):
     #args.prototype_class_identity.copy_(torch.stack((1 - proto_labels, proto_labels), dim=1))
     return model #, args
 
+def mean_pooling(model_output, attention_mask):
+    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
+    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
 
-def visualization(config, model, train_ds, train_loader_unshuffled, device):
+
+def sentence_visualization(config, model, train_ds, train_loader_unshuffled, device):
+    print("Prototype Visualization in Progress!")
     #Easier code which might only work for sentence
     model.eval()
     dist = []
@@ -472,14 +482,62 @@ def visualization(config, model, train_ds, train_loader_unshuffled, device):
             proto_dist = prototypes_of_correct_class*(distances-100)+100 # Ugly hack s.t. distance of non-classes are 100 (=big) 
             dist.append(proto_dist)
     dist = torch.cat(dist) 
-    _, nearest_ids = torch.topk(dist, 1, dim=0, largest=False) 
+    nearest_vals, nearest_ids = torch.topk(dist, 1, dim=0, largest=False) 
+    nearest_vals = nearest_vals.cpu().detach().numpy()
     nearest_ids = nearest_ids.cpu().detach().numpy().T.squeeze()
     texts = []
     for idx, (label, text) in enumerate(train_ds):
         texts.append(text)
     prototext = [texts[i] for i in nearest_ids]
+    #Find subset of words giving meaning to sentence-prototype
+    if config["model"]["embedding"] == "sentence" and config["model"]["submodel"] == "bert":
+        tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/bert-large-nli-mean-tokens')
+        model_emb = AutoModel.from_pretrained('sentence-transformers/bert-large-nli-mean-tokens')
+    #Create Variations of all Sentence Embeddings by removing one word
+    keep_words = []
+    
+    for nth_proto in range(len(prototext)):
+        proto_strings = prototext[nth_proto]
+        top_words = np.min((5,len(re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings))))
+        proto_words = []
+        proto_distance = np.empty(top_words)
+        
+        
+        
+        for nth_removed_word in range(top_words): #Iteratively remove most important words
+            prototype = re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings)
+            sentence_variants = [prototype[:i] + prototype[i+1:] for i in range(len(prototype))]
+            left_word = [prototype[i] for i in range(len(prototype))]
+            sentence_variants = [' '.join(i) for i in sentence_variants]
+            tokenized_proto = tokenizer(sentence_variants, padding=True, truncation=True, return_tensors='pt')
+            # Compute token embeddings
+            with torch.no_grad():
+                model_output = model_emb(**tokenized_proto)
+            # Perform pooling. In this case, mean pooling.
+            sentence_embeddings = mean_pooling(model_output, tokenized_proto['attention_mask']).to(device)
+            #Calculate distance to orginial embedding of sentence.
+            dist_per_word, _ = model.get_dist(sentence_embeddings.unsqueeze(1),_)
+            dist_per_word = dist_per_word[:,nth_proto]
+            farthest_val, farthest_ids = torch.topk(dist_per_word, 1, dim=0, largest=True) #Store largest distance
+            proto_words.append(left_word[farthest_ids])
+            proto_distance[nth_removed_word] = farthest_val
+            proto_strings  = sentence_variants[farthest_ids] 
+
+        #Choose words that give 75% of distance of all 5 words
+        proto_word_dist = proto_distance - nearest_vals[0,nth_proto]
+        cutoff = proto_word_dist <= 0.75*proto_word_dist[-1]
+        cutoff[0] = True #Always use first word
+        keep_words.append([proto_words[i] for i in np.where(cutoff)[0]])
     for j in range(config["model"]["n_classes"]):
         index = np.where(config["model"]["prototype class"][:,j]==1)[0]
         print("Class {}:".format(j))  #For RT: 0 = Bad, 1 = Good
-        print(np.array([prototext[i] for i in index]), sep='\n')
+        for i in index: 
+            print(np.array(keep_words[i]), sep='\n')
+            print(np.array(prototext[i]), sep='\n')
+
+        
+
+
+
+        
     

@@ -1,4 +1,4 @@
-name: "SentBert_MV_Cosine"
+name: "SentBert_MV_cosine"
 random_state: 42
 wandb_logging: False
 
