@@ -13,6 +13,7 @@ import torch.nn.functional as F
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
+
 def ned_torch(x1, x2, dim=1, eps=1e-8):
     ned_2 = 0.5 * ((x1 - x2).var(dim=dim) / (x1.var(dim=dim) + x2.var(dim=dim) + eps))
     return ned_2 ** 0.5
@@ -83,9 +84,7 @@ class ProtoNet(nn.Module):
 
         # Prototype Layer:
         self.protolayer = nn.parameter.Parameter(
-            nn.init.uniform_(
-                torch.empty(1, self.n_prototypes, self.dim), -1, 1
-            ),
+            nn.init.uniform_(torch.empty(1, self.n_prototypes, self.dim), -1, 1),
             requires_grad=True,
         )
 
@@ -103,8 +102,10 @@ class ProtoNet(nn.Module):
                 embedding, self.protolayer, dim=-1
             )
         elif self.metric == "L2":
-            #prototype_distances = -nes_torch(embedding, self.protolayer, dim=-1)
-            prototype_distances = torch.cdist(embedding.float(), self.protolayer.squeeze(), p=2).squeeze(1)/np.sqrt(self.dim)
+            # prototype_distances = -nes_torch(embedding, self.protolayer, dim=-1)
+            prototype_distances = torch.cdist(
+                embedding.float(), self.protolayer.squeeze(), p=2
+            ).squeeze(1) / np.sqrt(self.dim)
         else:
             raise NotImplemented
         return prototype_distances

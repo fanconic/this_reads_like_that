@@ -197,6 +197,15 @@ def nes_torch(x1, x2, dim=1, eps=1e-8):
 
 
 def proto_loss(prototype_distances, label, model, config, device):
+    """ Calculate the various losses of the prototypes
+    Args:
+        prototype_distances: distances/similarities of the prototypes
+        label: correct targets
+        config: dict containing further configurations
+        device: current pytorch device
+    Returns:
+        the various loss values
+    """
     # proxy variable, could be any high value
     max_dist = torch.prod(torch.tensor(model.protolayer.size()))
 
@@ -226,50 +235,55 @@ def proto_loss(prototype_distances, label, model, config, device):
     sep_loss = -torch.mean(max_dist - inverted_distances_to_nontarget_prototypes)
 
     # diversity loss, assures that prototypes are not too close
-    comb = torch.cartesian_prod(torch.arange(0, config["model"]["n_prototypes"]),torch.arange(0, config["model"]["n_prototypes"]))
+    comb = torch.cartesian_prod(
+        torch.arange(0, config["model"]["n_prototypes"]),
+        torch.arange(0, config["model"]["n_prototypes"]),
+    )
     if config["model"]["similaritymeasure"] == "cosine":
-        
-        proto_sim = F.cosine_similarity(
-            model.protolayer[:, comb][:, :, 0], model.protolayer[:, comb][:, :, 1],dim=2
-        ).squeeze().reshape((config["model"]["n_prototypes"],config["model"]["n_prototypes"]))
-        proto_sim += torch.diag(-3*torch.ones(config["model"]["n_prototypes"])).to(device) #decrease self-similarity to not be max
-        proto_min_sim, _ = torch.max(proto_sim, dim = 1)
+
+        proto_sim = (
+            F.cosine_similarity(
+                model.protolayer[:, comb][:, :, 0],
+                model.protolayer[:, comb][:, :, 1],
+                dim=2,
+            )
+            .squeeze()
+            .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
+        )
+        proto_sim += torch.diag(-3 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )  # decrease self-similarity to not be max
+        proto_min_sim, _ = torch.max(proto_sim, dim=1)
         divers_loss = torch.mean(proto_min_sim)
     elif config["model"]["similaritymeasure"] == "L2":
-        
-        #torch.mean(
-        #    nes_torch(
-        #        model.protolayer[:, comb][:, :, 0],
-        #        model.protolayer[:, comb][:, :, 1],
-        #        dim=2,
-        #    )
-        #    .squeeze()
-        #    .clamp(min=0.8)
-        #)
-        proto_dist = torch.cdist(model.protolayer,
-                model.protolayer, p=2)/np.sqrt(config["model"]["embed_dim"])
-        proto_dist += torch.diag(200*torch.ones(config["model"]["n_prototypes"])).to(device) #Increase self distance to not pick this as closest
-        proto_min_dist, _ = torch.min(proto_dist, dim = 1)
-        assert torch.all(proto_min_dist<200) #Set self-distance to 200 -> Don't take that
+        proto_dist = torch.cdist(model.protolayer, model.protolayer, p=2) / np.sqrt(
+            config["model"]["embed_dim"]
+        )
+        proto_dist += torch.diag(200 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )  # Increase self distance to not pick this as closest
+        proto_min_dist, _ = torch.min(proto_dist, dim=1)
+        assert torch.all(
+            proto_min_dist < 200
+        )  # Set self-distance to 200 -> Don't take that
         divers_loss = -torch.mean(proto_min_dist)
-    else: 
+    else:
         print("loss not defined")
         assert False
-                
-    # if args.soft:
-    #    soft_loss = - torch.mean(F.cosine_similarity(model.protolayer[:, args.soft[1]], args.soft[4].squeeze(0),
-    #                                                 dim=1).squeeze().clamp(max=args.soft[3]))
-    # else:
-    #    soft_loss = 0
-    # divers_loss += soft_loss * 0.5
-
-    # l1 loss on classification layer weights, scaled by number of prototypes
     l1_loss = model.fc.weight.norm(p=1) / config["model"]["n_prototypes"]
 
     return distr_loss, clust_loss, sep_loss, divers_loss, l1_loss
 
 
 def save_embedding(embedding, mask, label, config, set_name):
+    """ Save the embeddings, to speed up computing
+    Args:
+        embedding: the sentence embeddings
+        mask: according mask of the embeddings
+        label: targets
+        config: further configuration
+        set_name: name of the phase
+    """
     path = os.path.join("./src/data/embedding", config["data"]["data_name"])
     os.makedirs(path, exist_ok=True, mode=0o777)
     name = config["model"]["name"] + "_" + set_name
@@ -282,6 +296,13 @@ def save_embedding(embedding, mask, label, config, set_name):
 
 
 def load_embedding(config, set_name):
+    """ Load the precomputed embeddings
+    Args:
+        config: configuration dict
+        set_name: name of the current set
+    returns:
+        embedding, masks & labels
+    """
     path = os.path.join("./src/data/embedding", config["data"]["data_name"])
     name = config["model"]["submodel"] + "_" + set_name
     path_e = os.path.join(path, name + ".pt")
@@ -297,6 +318,14 @@ def load_embedding(config, set_name):
 
 
 def load_model_and_dataloader(wandb, config, device):
+    """ Loads the model and data loader
+    Args:
+        wandb: wandb instance for logging
+        config: configuration file
+        device: current device
+    Returns:
+        model and dataloaders
+    """
     train_iter, test_iter = load_data(
         config["data"]["dataset"],
         data_dir=config["data"]["data_dir"],
@@ -392,15 +421,30 @@ def load_model_and_dataloader(wandb, config, device):
             pin_memory=True,
             num_workers=0,
         )
-    return model, train_loader, val_loader, test_loader, train_ds, train_loader_unshuffled
+    return (
+        model,
+        train_loader,
+        val_loader,
+        test_loader,
+        train_ds,
+        train_loader_unshuffled,
+    )
 
 
-
-def get_nearest_sent(config, model, train_loader, device): 
-    #Easier code which might only work for sentence
+def get_nearest_sent(config, model, train_loader, device):
+    """ Retrueve the nearest sentence
+    Args:
+        config: configuration dict
+        model: classification model
+        train_loader: data loader with the train data
+        device: current device
+    Returns:
+        embedding of the nearest embeddings
+    """
+    # Easier code which might only work for sentence
     model.eval()
     dist = []
-    labels= []
+    labels = []
     embeddings = []
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(train_loader):
@@ -410,64 +454,96 @@ def get_nearest_sent(config, model, train_loader, device):
             embeddings.append(text)
             labels.append(label)
             prototypes_of_correct_class = torch.t(
-            config["model"]["prototype class"][:, label].to(device))
-            #Only look at embeddings of same class
-            proto_dist = prototypes_of_correct_class*(distances-100)+100 # Ugly hack s.t. distance of non-classes are 100 (=big) 
+                config["model"]["prototype class"][:, label].to(device)
+            )
+            # Only look at embeddings of same class
+            proto_dist = (
+                prototypes_of_correct_class * (distances - 100) + 100
+            )  # Ugly hack s.t. distance of non-classes are 100 (=big)
             dist.append(proto_dist)
-    dist = torch.cat(dist) 
-    values, nearest_ids = torch.topk(dist, 20, dim=0, largest=False) 
-    assert torch.max(values) < 100 #Check that hack works, otherwise datapoint from other class is closer to prototype
-    nearest_ids = nearest_ids.cpu().detach().numpy().T 
-    for j in range(1,20):
-        
-        for i in range(len(nearest_ids[:,0])):
-            if np.count_nonzero(nearest_ids[:,0] == nearest_ids[i,0]) != 1:
-                nearest_ids[i,0] = nearest_ids[i,j]
-        if len(np.unique(nearest_ids[:,0])) == len(nearest_ids[:,0]): break
-                
-    assert len(np.unique(nearest_ids[:,0])) == len(nearest_ids[:,0])
-    new_proto_emb = torch.cat(embeddings)[nearest_ids[:,0],:] #model.protolayer[:,13:15] goes to nan in optimizer
+    dist = torch.cat(dist)
+    values, nearest_ids = torch.topk(dist, 20, dim=0, largest=False)
+    assert (
+        torch.max(values) < 100
+    )  # Check that hack works, otherwise datapoint from other class is closer to prototype
+    nearest_ids = nearest_ids.cpu().detach().numpy().T
+    for j in range(1, 20):
+
+        for i in range(len(nearest_ids[:, 0])):
+            if np.count_nonzero(nearest_ids[:, 0] == nearest_ids[i, 0]) != 1:
+                nearest_ids[i, 0] = nearest_ids[i, j]
+        if len(np.unique(nearest_ids[:, 0])) == len(nearest_ids[:, 0]):
+            break
+
+    assert len(np.unique(nearest_ids[:, 0])) == len(nearest_ids[:, 0])
+    new_proto_emb = torch.cat(embeddings)[
+        nearest_ids[:, 0], :
+    ]  # model.protolayer[:,13:15] goes to nan in optimizer
     return new_proto_emb
 
 
-
 def project(config, model, train_loader, device, last_proj):
+    """
+    Project the sentences back on the input space
+    Args:
+        config: configuration dict
+        model: classification models
+        train_loader: data loader with the training data
+        last_proj: Last projection
+    Returns:
+        model
+    """
     # project prototypes
-    if config["model"]["embedding"] == 'sentence':
+    if config["model"]["embedding"] == "sentence":
         new_proto_emb = get_nearest_sent(config, model, train_loader, device)
         new_proto = new_proto_emb
-    elif config["model"]["embedding"] == 'word':
+    elif config["model"]["embedding"] == "word":
         print("Word projection, not yet implemented")
-        assert 1 == 2
-        #proto_ids, _, [nearest_sent, nearest_words] = get_nearest(model, train_batches_unshuffled, text_train,
-        #                                                          labels_train, device)
-        #new_proto = embedding_train[nearest_sent[:, np.newaxis].repeat(config["model"]["n_words_per_proto"], axis=1), nearest_words, :]
-    else: print("Specify sentence or word in config")
+        raise NotImplemented
+    else:
+        print("Specify sentence or word in config")
     new_proto = new_proto.view(model.protolayer.shape)
     model.protolayer.copy_(new_proto)
-    if last_proj: #Newly define Prototypes for freezing them, otherwise Adam continues updating bcs of Running Average
-        model.protolayer = nn.parameter.Parameter(
-            new_proto,
-            requires_grad=False,
-        )
+
+    # Newly define Prototypes for freezing them, otherwise Adam continues updating bcs of Running Average
+    if last_proj:
+        model.protolayer = nn.parameter.Parameter(new_proto, requires_grad=False,)
     # give prototypes their "true" label
-    #s = 'label'
-    #proto_labels = torch.tensor([int(p[p.index(s) + len(s) + 1]) for p in proto_ids])
-    #args.prototype_class_identity.copy_(torch.stack((1 - proto_labels, proto_labels), dim=1))
-    return model #, args
+    return model
+
 
 def mean_pooling(model_output, attention_mask):
-    token_embeddings = model_output[0] #First element of model_output contains all token embeddings
-    input_mask_expanded = attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
-    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(input_mask_expanded.sum(1), min=1e-9)
+    """ Computes the average and pools the values
+    Args:
+        model_output: output features of the classification model
+        attention_mask: according atttention mask
+    Returns:
+        pooled embeddings
+    """
+    # First element of model_output contains all token embeddings
+    token_embeddings = model_output[0]
+    input_mask_expanded = (
+        attention_mask.unsqueeze(-1).expand(token_embeddings.size()).float()
+    )
+    return torch.sum(token_embeddings * input_mask_expanded, 1) / torch.clamp(
+        input_mask_expanded.sum(1), min=1e-9
+    )
 
 
 def sentence_visualization(config, model, train_ds, train_loader_unshuffled, device):
+    """ Visualize the most similar prototypical sentences, to receive an interpretable reasoning of the model
+    Args:
+        config: configuration dict
+        model: classification model
+        train_ds: training dataset
+        train_loader_unshuffled: a data loader with the training data that is UNSHUFFLED
+        device: current device
+    """
     print("Prototype Visualization in Progress!")
-    #Easier code which might only work for sentence
+    # Easier code which might only work for sentence
     model.eval()
     dist = []
-    labels= []
+    labels = []
     embeddings = []
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(train_loader_unshuffled):
@@ -477,67 +553,80 @@ def sentence_visualization(config, model, train_ds, train_loader_unshuffled, dev
             embeddings.append(text)
             labels.append(label)
             prototypes_of_correct_class = torch.t(
-            config["model"]["prototype class"][:, label].to(device))
-            #Only look at embeddings of same class
-            proto_dist = prototypes_of_correct_class*(distances-100)+100 # Ugly hack s.t. distance of non-classes are 100 (=big) 
+                config["model"]["prototype class"][:, label].to(device)
+            )
+            # Only look at embeddings of same class
+            proto_dist = (
+                prototypes_of_correct_class * (distances - 100) + 100
+            )  # Ugly hack s.t. distance of non-classes are 100 (=big)
             dist.append(proto_dist)
-    dist = torch.cat(dist) 
-    nearest_vals, nearest_ids = torch.topk(dist, 1, dim=0, largest=False) 
+    dist = torch.cat(dist)
+    nearest_vals, nearest_ids = torch.topk(dist, 1, dim=0, largest=False)
     nearest_vals = nearest_vals.cpu().detach().numpy()
     nearest_ids = nearest_ids.cpu().detach().numpy().T.squeeze()
     texts = []
     for idx, (label, text) in enumerate(train_ds):
         texts.append(text)
     prototext = [texts[i] for i in nearest_ids]
-    #Find subset of words giving meaning to sentence-prototype
-    if config["model"]["embedding"] == "sentence" and config["model"]["submodel"] == "bert":
-        tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/bert-large-nli-mean-tokens')
-        model_emb = AutoModel.from_pretrained('sentence-transformers/bert-large-nli-mean-tokens')
-    #Create Variations of all Sentence Embeddings by removing one word
+    # Find subset of words giving meaning to sentence-prototype
+    if (
+        config["model"]["embedding"] == "sentence"
+        and config["model"]["submodel"] == "bert"
+    ):
+        tokenizer = AutoTokenizer.from_pretrained(
+            "sentence-transformers/bert-large-nli-mean-tokens"
+        )
+        model_emb = AutoModel.from_pretrained(
+            "sentence-transformers/bert-large-nli-mean-tokens"
+        )
+    # Create Variations of all Sentence Embeddings by removing one word
     keep_words = []
-    
+
     for nth_proto in range(len(prototext)):
         proto_strings = prototext[nth_proto]
-        top_words = np.min((5,len(re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings))))
+        top_words = np.min(
+            (5, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings)))
+        )
         proto_words = []
         proto_distance = np.empty(top_words)
-        
-        
-        
-        for nth_removed_word in range(top_words): #Iteratively remove most important words
+
+        for nth_removed_word in range(
+            top_words
+        ):  # Iteratively remove most important words
             prototype = re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings)
-            sentence_variants = [prototype[:i] + prototype[i+1:] for i in range(len(prototype))]
+            sentence_variants = [
+                prototype[:i] + prototype[i + 1 :] for i in range(len(prototype))
+            ]
             left_word = [prototype[i] for i in range(len(prototype))]
-            sentence_variants = [' '.join(i) for i in sentence_variants]
-            tokenized_proto = tokenizer(sentence_variants, padding=True, truncation=True, return_tensors='pt')
+            sentence_variants = [" ".join(i) for i in sentence_variants]
+            tokenized_proto = tokenizer(
+                sentence_variants, padding=True, truncation=True, return_tensors="pt"
+            )
             # Compute token embeddings
             with torch.no_grad():
                 model_output = model_emb(**tokenized_proto)
             # Perform pooling. In this case, mean pooling.
-            sentence_embeddings = mean_pooling(model_output, tokenized_proto['attention_mask']).to(device)
-            #Calculate distance to orginial embedding of sentence.
-            dist_per_word, _ = model.get_dist(sentence_embeddings.unsqueeze(1),_)
-            dist_per_word = dist_per_word[:,nth_proto]
-            farthest_val, farthest_ids = torch.topk(dist_per_word, 1, dim=0, largest=True) #Store largest distance
+            sentence_embeddings = mean_pooling(
+                model_output, tokenized_proto["attention_mask"]
+            ).to(device)
+            # Calculate distance to orginial embedding of sentence.
+            dist_per_word, _ = model.get_dist(sentence_embeddings.unsqueeze(1), _)
+            dist_per_word = dist_per_word[:, nth_proto]
+            farthest_val, farthest_ids = torch.topk(
+                dist_per_word, 1, dim=0, largest=True
+            )  # Store largest distance
             proto_words.append(left_word[farthest_ids])
             proto_distance[nth_removed_word] = farthest_val
-            proto_strings  = sentence_variants[farthest_ids] 
+            proto_strings = sentence_variants[farthest_ids]
 
-        #Choose words that give 75% of distance of all 5 words
-        proto_word_dist = proto_distance - nearest_vals[0,nth_proto]
-        cutoff = proto_word_dist <= 0.75*proto_word_dist[-1]
-        cutoff[0] = True #Always use first word
+        # Choose words that give 75% of distance of all 5 words
+        proto_word_dist = proto_distance - nearest_vals[0, nth_proto]
+        cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+        cutoff[0] = True  # Always use first word
         keep_words.append([proto_words[i] for i in np.where(cutoff)[0]])
     for j in range(config["model"]["n_classes"]):
-        index = np.where(config["model"]["prototype class"][:,j]==1)[0]
-        print("Class {}:".format(j))  #For RT: 0 = Bad, 1 = Good
-        for i in index: 
-            print(np.array(keep_words[i]), sep='\n')
-            print(np.array(prototext[i]), sep='\n')
-
-        
-
-
-
-        
-    
+        index = np.where(config["model"]["prototype class"][:, j] == 1)[0]
+        print("Class {}:".format(j))  # For RT: 0 = Bad, 1 = Good
+        for i in index:
+            print(np.array(keep_words[i]), sep="\n")
+            print(np.array(prototext[i]), sep="\n")

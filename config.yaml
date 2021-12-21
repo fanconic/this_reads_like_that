@@ -1,6 +1,6 @@
-name: "SentBert_MV_cosine"
+name: "epoch_check"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "reviews"
