@@ -87,7 +87,10 @@ class ProtoNet(nn.Module):
             nn.init.uniform_(torch.empty(1, self.n_prototypes, self.dim), -1, 1),
             requires_grad=True,
         )
-
+        self.dim_weights = nn.parameter.Parameter(
+            nn.init.ones_(torch.empty(self.dim)),
+            requires_grad=True,
+        )
         # Classify according to similarity
         self.fc = nn.Linear(self.n_prototypes, num_class, bias=False)
 
@@ -106,6 +109,10 @@ class ProtoNet(nn.Module):
             prototype_distances = torch.cdist(
                 embedding.float(), self.protolayer.squeeze(), p=2
             ).squeeze(1) / np.sqrt(self.dim)
+        elif self.metric == "weighted cosine":
+            prototype_distances = -torch.sum(self.dim_weights*embedding*self.protolayer, dim=-1)/torch.maximum((
+                torch.norm(torch.sqrt(self.dim_weights)*embedding,dim=-1)*torch.norm(torch.sqrt(self.dim_weights)*self.protolayer,dim=-1)
+            ),torch.tensor(1e-8))
         else:
             raise NotImplemented
         return prototype_distances

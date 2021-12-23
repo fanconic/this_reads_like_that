@@ -267,6 +267,19 @@ def proto_loss(prototype_distances, label, model, config, device):
             proto_min_dist < 200
         )  # Set self-distance to 200 -> Don't take that
         divers_loss = -torch.mean(proto_min_dist)
+    elif config["model"]["similaritymeasure"] == "weighted cosine":
+        proto_sim = ((torch.sum(model.dim_weights*model.protolayer[:, comb][:, :, 0]*model.protolayer[:, comb][:, :, 1], dim=-1)/torch.maximum((
+                torch.norm(torch.sqrt(model.dim_weights)*model.protolayer[:, comb][:, :, 0],dim=-1)*torch.norm(torch.sqrt(model.dim_weights)*model.protolayer[:, comb][:, :, 1],dim=-1)),torch.tensor(1e-8)
+            ))
+            .squeeze()
+            .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
+        )
+
+        proto_sim += torch.diag(-3 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )  # decrease self-similarity to not be max
+        proto_min_sim, _ = torch.max(proto_sim, dim=1)
+        divers_loss = torch.mean(proto_min_sim)
     else:
         print("loss not defined")
         assert False

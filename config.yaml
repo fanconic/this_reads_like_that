@@ -1,6 +1,6 @@
-name: "epoch_check"
+name: "weighing_dims"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
     dataset: "reviews"
@@ -21,7 +21,7 @@ model:
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
-    similaritymeasure: "cosine" #L2 or cosine
+    similaritymeasure: "weighted cosine" #L2 or cosine or weighted cosine
     embedding: "sentence" #sentence or word
     project: True
 
