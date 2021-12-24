@@ -506,7 +506,7 @@ def project(config, model, train_loader, device, last_proj):
     model.protolayer.copy_(new_proto)
 
     # Newly define Prototypes for freezing them, otherwise Adam continues updating bcs of Running Average
-    if last_proj:
+    if last_proj:  
         model.protolayer = nn.parameter.Parameter(new_proto, requires_grad=False,)
     # give prototypes their "true" label
     return model

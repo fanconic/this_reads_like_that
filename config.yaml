@@ -1,6 +1,6 @@
 name: "epoch_check"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
     dataset: "reviews"
@@ -11,7 +11,7 @@ data:
 
 train:
     batch_size: 128
-    epochs: 100
+    epochs: 32
     verbose: True
 
 model:
@@ -20,7 +20,7 @@ model:
     embed_dim: 1024 #1024 for sentence + bert
     n_classes: 2
     freeze_layers: True
-    n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
+    n_prototypes: 10 #Make sure that n_prototypes/n_classes gives integer
     similaritymeasure: "cosine" #L2 or cosine
     embedding: "sentence" #sentence or word
     project: True

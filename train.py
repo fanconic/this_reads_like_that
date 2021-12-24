@@ -6,7 +6,6 @@ from torch import nn, optim
 import yaml
 import wandb
 import argparse
-import pandas as pd
 import random
 import os
 import numpy as np
@@ -18,7 +17,6 @@ from src.utils.utils import (
     project,
     sentence_visualization,
 )
-import time
 import IPython
 from tqdm import tqdm
 from src.models.models import ProtoNet
@@ -146,6 +144,7 @@ def train(
         if verbose:
             train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
             train_loader.set_postfix(loss=loss.item(), acc=total_acc / total_count)
+
     wandb.log(
         {"train_loss": loss, "train_accuracy": total_acc / total_count, "epoch": epoch}
     )
