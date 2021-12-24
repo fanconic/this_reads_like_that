@@ -111,7 +111,7 @@ class ProtoNet(nn.Module):
             ).squeeze(1) / np.sqrt(self.dim)
         elif self.metric == "weighted cosine":
             prototype_distances = -torch.sum(self.dim_weights*embedding*self.protolayer, dim=-1)/torch.maximum((
-                torch.norm(torch.sqrt(self.dim_weights)*embedding,dim=-1)*torch.norm(torch.sqrt(self.dim_weights)*self.protolayer,dim=-1)
+                torch.sqrt(torch.sum(self.dim_weights*torch.square(embedding),dim=-1))*torch.sqrt(torch.sum(self.dim_weights*torch.square(self.protolayer),dim=-1))
             ),torch.tensor(1e-8))
         else:
             raise NotImplemented

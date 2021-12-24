@@ -269,7 +269,7 @@ def proto_loss(prototype_distances, label, model, config, device):
         divers_loss = -torch.mean(proto_min_dist)
     elif config["model"]["similaritymeasure"] == "weighted cosine":
         proto_sim = ((torch.sum(model.dim_weights*model.protolayer[:, comb][:, :, 0]*model.protolayer[:, comb][:, :, 1], dim=-1)/torch.maximum((
-                torch.norm(torch.sqrt(model.dim_weights)*model.protolayer[:, comb][:, :, 0],dim=-1)*torch.norm(torch.sqrt(model.dim_weights)*model.protolayer[:, comb][:, :, 1],dim=-1)),torch.tensor(1e-8)
+                torch.sqrt(torch.sum(model.dim_weights*torch.square(model.protolayer[:, comb][:, :, 0]),dim=-1))*torch.sqrt(torch.sum(model.dim_weights*torch.square(model.protolayer[:, comb][:, :, 1]),dim=-1))),torch.tensor(1e-8)
             ))
             .squeeze()
             .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))

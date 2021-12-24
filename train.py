@@ -75,11 +75,11 @@ def main(config, random_state=0):
             gpt2_bert_lm,
         )
         val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
-        # project prototypes all 5 Epochs. Start projection after 20% of epochs and let last 3 epochs be only final layer training
+        # project prototypes all 5 Epochs. Start projection after 50% of epochs and let last 3 epochs be only final layer training
         if (
             (epoch + 1) % 5 == 0
             and config["model"]["project"]
-            and (epochs * 2 // 10) < (epoch + 1) < (epochs - 3)
+            and (epochs * 5 // 10) < (epoch + 1) < (epochs - 3)
         ):
             with torch.no_grad():
                 model = project(config, model, train_loader, device, False)
@@ -139,6 +139,7 @@ def train(
         optimizer.step()
         with torch.no_grad():
             model.fc.weight.copy_(model.fc.weight.clamp(max=0.0))
+            model.dim_weights.copy_(model.dim_weights.clamp(min=0.0))
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
         total_count += label.size(0)
