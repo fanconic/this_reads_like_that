@@ -268,9 +268,34 @@ def proto_loss(prototype_distances, label, model, config, device):
         )  # Set self-distance to 200 -> Don't take that
         divers_loss = -torch.mean(proto_min_dist)
     elif config["model"]["similaritymeasure"] == "weighted cosine":
-        proto_sim = ((torch.sum(model.dim_weights*model.protolayer[:, comb][:, :, 0]*model.protolayer[:, comb][:, :, 1], dim=-1)/torch.maximum((
-                torch.sqrt(torch.sum(model.dim_weights*torch.square(model.protolayer[:, comb][:, :, 0]),dim=-1))*torch.sqrt(torch.sum(model.dim_weights*torch.square(model.protolayer[:, comb][:, :, 1]),dim=-1))),torch.tensor(1e-8)
-            ))
+        proto_sim = (
+            (
+                torch.sum(
+                    model.dim_weights
+                    * model.protolayer[:, comb][:, :, 0]
+                    * model.protolayer[:, comb][:, :, 1],
+                    dim=-1,
+                )
+                / torch.maximum(
+                    (
+                        torch.sqrt(
+                            torch.sum(
+                                model.dim_weights
+                                * torch.square(model.protolayer[:, comb][:, :, 0]),
+                                dim=-1,
+                            )
+                        )
+                        * torch.sqrt(
+                            torch.sum(
+                                model.dim_weights
+                                * torch.square(model.protolayer[:, comb][:, :, 1]),
+                                dim=-1,
+                            )
+                        )
+                    ),
+                    torch.tensor(1e-8),
+                )
+            )
             .squeeze()
             .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
         )
@@ -519,7 +544,7 @@ def project(config, model, train_loader, device, last_proj):
     model.protolayer.copy_(new_proto)
 
     # Newly define Prototypes for freezing them, otherwise Adam continues updating bcs of Running Average
-    if last_proj:  
+    if last_proj:
         model.protolayer = nn.parameter.Parameter(new_proto, requires_grad=False,)
     # give prototypes their "true" label
     return model
@@ -643,4 +668,3 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
         for i in index:
             print(np.array(keep_words[i]), sep="\n")
             print(np.array(prototext[i]), sep="\n")
-
