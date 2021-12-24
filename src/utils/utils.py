@@ -543,8 +543,8 @@ def mean_pooling(model_output, attention_mask):
     )
 
 
-def sentence_visualization(config, model, train_ds, train_loader_unshuffled, device):
-    """ Visualize the most similar prototypical sentences, to receive an interpretable reasoning of the model
+def prototype_visualization(config, model, train_ds, train_loader_unshuffled, device):
+    """ Visualize the prototypical sentences, to receive an interpretable reasoning of the model
     Args:
         config: configuration dict
         model: classification model
@@ -643,3 +643,4 @@ def sentence_visualization(config, model, train_ds, train_loader_unshuffled, dev
         for i in index:
             print(np.array(keep_words[i]), sep="\n")
             print(np.array(prototext[i]), sep="\n")
+
