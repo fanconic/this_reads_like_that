@@ -16,7 +16,7 @@ from src.utils.utils import (
     get_optimizer,
     get_scheduler,
     project,
-    sentence_visualization,
+    prototype_visualization,
 )
 import time
 import IPython
@@ -93,7 +93,7 @@ def main(config, random_state=0):
         scheduler.step()
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
     if config["model"]["embedding"] == "sentence":
-        sentence_visualization(config, model, train_ds, train_loader_unshuffled, device)
+        prototype_visualization(config, model, train_ds, train_loader_unshuffled, device)
 
 
 def train(
