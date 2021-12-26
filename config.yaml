@@ -1,6 +1,6 @@
-name: "weighing_dims"
+name: "L1_similaritye"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "reviews"
