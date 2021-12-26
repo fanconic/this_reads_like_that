@@ -197,7 +197,7 @@ def nes_torch(x1, x2, dim=1, eps=1e-8):
 
 
 def proto_loss(prototype_distances, label, model, config, device):
-    """ Calculate the various losses of the prototypes
+    """Calculate the various losses of the prototypes
     Args:
         prototype_distances: distances/similarities of the prototypes
         label: correct targets
@@ -239,8 +239,8 @@ def proto_loss(prototype_distances, label, model, config, device):
         torch.arange(0, config["model"]["n_prototypes"]),
         torch.arange(0, config["model"]["n_prototypes"]),
     )
-    if config["model"]["similaritymeasure"] == "cosine":
 
+    if config["model"]["similaritymeasure"] == "cosine":
         proto_sim = (
             F.cosine_similarity(
                 model.protolayer[:, comb][:, :, 0],
@@ -255,6 +255,7 @@ def proto_loss(prototype_distances, label, model, config, device):
         )  # decrease self-similarity to not be max
         proto_min_sim, _ = torch.max(proto_sim, dim=1)
         divers_loss = torch.mean(proto_min_sim)
+
     elif config["model"]["similaritymeasure"] == "L2":
         proto_dist = torch.cdist(model.protolayer, model.protolayer, p=2) / np.sqrt(
             config["model"]["embed_dim"]
@@ -267,7 +268,22 @@ def proto_loss(prototype_distances, label, model, config, device):
             proto_min_dist < 200
         )  # Set self-distance to 200 -> Don't take that
         divers_loss = -torch.mean(proto_min_dist)
-    elif config["model"]["similaritymeasure"] == "weighted cosine":
+
+    elif config["model"]["similaritymeasure"] == "L1":
+        proto_dist = (
+            torch.cdist(model.protolayer, model.protolayer, p=1)
+            / config["model"]["embed_dim"]
+        )
+        proto_dist += torch.diag(200 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )  # Increase self distance to not pick this as closest
+        proto_min_dist, _ = torch.min(proto_dist, dim=1)
+        assert torch.all(
+            proto_min_dist < 200
+        )  # Set self-distance to 200 -> Don't take that
+        divers_loss = -torch.mean(proto_min_dist)
+
+    elif config["model"]["similaritymeasure"] == "weighted_cosine":
         proto_sim = (
             (
                 torch.sum(
@@ -305,6 +321,39 @@ def proto_loss(prototype_distances, label, model, config, device):
         )  # decrease self-similarity to not be max
         proto_min_sim, _ = torch.max(proto_sim, dim=1)
         divers_loss = torch.mean(proto_min_sim)
+
+    elif config["model"]["similaritymeasure"] == "dot_product":
+        proto_sim = (
+            torch.sum(
+                model.protolayer[:, comb][:, :, 0] * model.protolayer[:, comb][:, :, 1],
+                dim=-1,
+            )
+            .squeeze()
+            .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
+        )
+        # decrease self-similarity to not be max
+        proto_sim += torch.diag(200 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )
+        proto_min_sim, _ = torch.min(proto_sim, dim=1)
+        divers_loss = torch.mean(proto_min_sim)
+
+    elif config["model"]["similaritymeasure"] == "learned":
+        hW = torch.matmul(
+            model.protolayer[:, comb][:, :, 0], (model.W / torch.linalg.norm(model.W))
+        )
+        proto_sim = (
+            torch.sum(hW * model.protolayer[:, comb][:, :, 1], dim=-1)
+            .squeeze()
+            .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
+        )
+        # decrease self-similarity to not be max
+        proto_sim += torch.diag(-200 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )
+        proto_min_sim, _ = torch.max(proto_sim, dim=1)
+        divers_loss = torch.mean(proto_min_sim)
+
     else:
         print("loss not defined")
         assert False
@@ -314,7 +363,7 @@ def proto_loss(prototype_distances, label, model, config, device):
 
 
 def save_embedding(embedding, mask, label, config, set_name):
-    """ Save the embeddings, to speed up computing
+    """Save the embeddings, to speed up computing
     Args:
         embedding: the sentence embeddings
         mask: according mask of the embeddings
@@ -334,7 +383,7 @@ def save_embedding(embedding, mask, label, config, set_name):
 
 
 def load_embedding(config, set_name):
-    """ Load the precomputed embeddings
+    """Load the precomputed embeddings
     Args:
         config: configuration dict
         set_name: name of the current set
@@ -356,7 +405,7 @@ def load_embedding(config, set_name):
 
 
 def load_model_and_dataloader(wandb, config, device):
-    """ Loads the model and data loader
+    """Loads the model and data loader
     Args:
         wandb: wandb instance for logging
         config: configuration file
@@ -470,7 +519,7 @@ def load_model_and_dataloader(wandb, config, device):
 
 
 def get_nearest_sent(config, model, train_loader, device):
-    """ Retrueve the nearest sentence
+    """Retrueve the nearest sentence
     Args:
         config: configuration dict
         model: classification model
@@ -545,13 +594,16 @@ def project(config, model, train_loader, device, last_proj):
 
     # Newly define Prototypes for freezing them, otherwise Adam continues updating bcs of Running Average
     if last_proj:
-        model.protolayer = nn.parameter.Parameter(new_proto, requires_grad=False,)
+        model.protolayer = nn.parameter.Parameter(
+            new_proto,
+            requires_grad=False,
+        )
     # give prototypes their "true" label
     return model
 
 
 def mean_pooling(model_output, attention_mask):
-    """ Computes the average and pools the values
+    """Computes the average and pools the values
     Args:
         model_output: output features of the classification model
         attention_mask: according atttention mask
@@ -569,7 +621,7 @@ def mean_pooling(model_output, attention_mask):
 
 
 def prototype_visualization(config, model, train_ds, train_loader_unshuffled, device):
-    """ Visualize the prototypical sentences, to receive an interpretable reasoning of the model
+    """Visualize the prototypical sentences, to receive an interpretable reasoning of the model
     Args:
         config: configuration dict
         model: classification model

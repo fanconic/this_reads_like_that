@@ -21,6 +21,8 @@ import IPython
 from tqdm import tqdm
 from src.models.models import ProtoNet
 
+torch.autograd.set_detect_anomaly(True)
+
 
 def set_seed(seed):
     """Set all random seeds"""
@@ -139,7 +141,8 @@ def train(
         optimizer.step()
         with torch.no_grad():
             model.fc.weight.copy_(model.fc.weight.clamp(max=0.0))
-            model.dim_weights.copy_(model.dim_weights.clamp(min=0.0))
+            if hasattr(model, "dim_weights"):
+                model.dim_weights.copy_(model.dim_weights.clamp(min=0.0))
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
         total_count += label.size(0)

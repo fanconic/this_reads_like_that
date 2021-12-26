@@ -87,9 +87,18 @@ class ProtoNet(nn.Module):
             nn.init.uniform_(torch.empty(1, self.n_prototypes, self.dim), -1, 1),
             requires_grad=True,
         )
-        self.dim_weights = nn.parameter.Parameter(
-            nn.init.ones_(torch.empty(self.dim)), requires_grad=True,
-        )
+        if self.metric == "weighted_cosine":
+            self.dim_weights = nn.parameter.Parameter(
+                nn.init.ones_(torch.empty(self.dim)),
+                requires_grad=True,
+            )
+
+        if self.metric == "learned":
+            self.W = nn.parameter.Parameter(
+                nn.init.uniform_(torch.empty(self.dim, self.dim)),
+                requires_grad=True,
+            )
+
         # Classify according to similarity
         self.fc = nn.Linear(self.n_prototypes, num_class, bias=False)
 
@@ -108,7 +117,15 @@ class ProtoNet(nn.Module):
             prototype_distances = torch.cdist(
                 embedding.float(), self.protolayer.squeeze(), p=2
             ).squeeze(1) / np.sqrt(self.dim)
-        elif self.metric == "weighted cosine":
+        elif self.metric == "L1":
+            # prototype_distances = -nes_torch(embedding, self.protolayer, dim=-1)
+            prototype_distances = (
+                torch.cdist(embedding.float(), self.protolayer.squeeze(), p=1).squeeze(
+                    1
+                )
+                / self.dim
+            )
+        elif self.metric == "weighted_cosine":
             prototype_distances = -torch.sum(
                 self.dim_weights * embedding * self.protolayer, dim=-1
             ) / torch.maximum(
@@ -124,6 +141,13 @@ class ProtoNet(nn.Module):
                 ),
                 torch.tensor(1e-8),
             )
+        elif self.metric == "dot_product":
+            # exp(-x.T*y)
+            prototype_distances = torch.sum(self.protolayer * embedding, dim=-1)
+        elif self.metric == "learned":
+            # x.T*W*y
+            hW = torch.matmul(embedding, (self.W / torch.linalg.norm(self.W)))
+            prototype_distances = torch.sum(hW * self.protolayer, dim=-1)
         else:
             raise NotImplemented
         return prototype_distances
