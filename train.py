@@ -389,7 +389,7 @@ def explain(
 
     import csv
 
-    save_path = os.path.join(".", "explained_normal.csv")
+    save_path = os.path.join(".", config["name"] +"_explained.csv")
     with open(save_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerows(explained_test_samples)
@@ -418,11 +418,11 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
         mask_test = torch.cat([mask_test, m])
 
     data_explained = pd.read_csv(
-        os.path.join(os.path.dirname("."), "explained_normal.csv")
+        os.path.join(".", config["name"] +"_explained.csv")
     )
     tbl = wandb.Table(data=data_explained)
     wandb.log({"Explained": tbl})
-    
+
     score = [f"score_{i} \n" for i in range(1, config["explain"]["max_numbers"]+1)]
 
     _, top_ids = torch.topk(torch.tensor(data_explained[score].to_numpy()), k=k)
@@ -464,13 +464,13 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
             explained_test_samples.append(values)
 
     acc_test = (np.array(labels_test) == np.array(all_preds)).sum() / len(labels_test)
-    print(acc_test * 100)
+    print(f"New Accuracy without {k} best prototypes: {acc_test * 100}")
+    """
     import csv
-
     save_path = os.path.join(os.path.dirname("."), "compr_" + config["name"] + ".csv")
     with open(save_path, "w", newline="") as f:
         writer = csv.writer(f)
-        writer.writerows(explained_test_samples)
+        writer.writerows(explained_test_samples)"""
 
 
 if __name__ == "__main__":
