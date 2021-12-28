@@ -97,14 +97,20 @@ def main(config, random_state=0):
         scheduler.step()
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
     if config["model"]["embedding"] == "sentence":
-        pass
-        """prototype_visualization(
+        important_words = prototype_visualization(
             config, model, train_ds, train_loader_unshuffled, device
-        )"""
+        )
 
     # Create explanation CSV
     explain(
-        config, model, test_ds, train_ds, test_loader, train_loader_unshuffled, device
+        config,
+        model,
+        test_ds,
+        train_ds,
+        test_loader,
+        train_loader_unshuffled,
+        important_words,
+        device,
     )
 
     # Check the faithfullness
@@ -284,7 +290,14 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
 
 def explain(
-    config, model, test_ds, train_ds, test_loader, train_batches_unshuffled, device
+    config,
+    model,
+    test_ds,
+    train_ds,
+    test_loader,
+    train_batches_unshuffled,
+    important_words,
+    device,
 ):
     """Create explanation CSV file of the model in training
     Args:
@@ -294,6 +307,7 @@ def explain(
         train_ds: training dataset (contains the texts)
         test_loader: test loader, which contains the embeddings and masks
         train_batches_unshuffled: train loader, unshuffled, with embeddings and masks
+        important_words: list of lists with the most important words of the prototypes
         device: current device
     """
     model.eval()
@@ -329,12 +343,14 @@ def explain(
             f"probability class 0 \n",
             f"probability class 1 \n",
         ]
-        for j in range(config["model"]["n_prototypes"]):
+        for j in range(config["explain"]["max_numbers"]):
             values.append(f"explanation_{j + 1} \n")
+            values.append(f"keywords_{j+1} \n")
+            values.append(f"score_{j + 1} \n")
             values.append(f"id_{j + 1} \n")
             values.append(f"similarity_{j + 1} \n")
             values.append(f"weight_{j + 1} \n")
-            values.append(f"score_{j + 1} \n")
+            
 
         explained_test_samples.append(values)
 
@@ -350,7 +366,7 @@ def explain(
                 prototype_distances.cpu().detach().squeeze() * weights[:, predicted].T
             )
             top_scores = similarity_score
-
+            sorted = torch.argsort(top_scores, descending=True)
             values = [
                 "".join(text_test[i]) + "\n",
                 f"{int(labels_test[i])}\n",
@@ -358,14 +374,17 @@ def explain(
                 f"{probability[0]:.3f}\n",
                 f"{probability[1]:.3f}\n",
             ]
-            for j in range(config["model"]["n_prototypes"]):
-                idx = j
+            for i,j in enumerate(sorted):
+                idx = j.item()
                 nearest_proto = proto_texts[idx]
                 values.append(f"{nearest_proto}\n")
+                values.append(", ".join(important_words[idx]) + "\n")
+                values.append(f"{float(top_scores[j]):.3f}\n")
                 values.append(f"{idx + 1}\n")
                 values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}\n")
                 values.append(f"{float(-weights[idx, predicted]):.3f}\n")
-                values.append(f"{float(top_scores[j]):.3f}\n")
+                if i == config["explain"]["max_numbers"]-1:
+                    break
             explained_test_samples.append(values)
 
     import csv
@@ -376,7 +395,7 @@ def explain(
         writer.writerows(explained_test_samples)
 
 
-def faithful(config, model, test_ds, test_loader, device, k=2):
+def faithful(config, model, test_ds, test_loader, device, k=1):
     """Computes the faithfullness of the Model, once the highest prototype is removed
     Args:
         config: configuration dictionary
@@ -401,19 +420,11 @@ def faithful(config, model, test_ds, test_loader, device, k=2):
     data_explained = pd.read_csv(
         os.path.join(os.path.dirname("."), "explained_normal.csv")
     )
+    tbl = wandb.Table(data=data_explained)
+    wandb.log({"Explained": tbl})
+    
+    score = [f"score_{i} \n" for i in range(1, config["explain"]["max_numbers"]+1)]
 
-    score = [
-        "score_1 \n",
-        "score_2 \n",
-        "score_3 \n",
-        "score_4 \n",
-        "score_5 \n",
-        "score_6 \n",
-        "score_7 \n",
-        "score_8 \n",
-        "score_9 \n",
-        "score_10 \n",
-    ]
     _, top_ids = torch.topk(torch.tensor(data_explained[score].to_numpy()), k=k)
 
     explained_test_samples = []

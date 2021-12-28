@@ -737,3 +737,5 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
         for i in index:
             print(np.array(keep_words[i]), sep="\n")
             print(np.array(prototext[i]), sep="\n")
+
+    return keep_words

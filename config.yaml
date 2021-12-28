@@ -1,6 +1,6 @@
-name: "test"
+name: "weighted cosine with explanation"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "reviews"
@@ -11,7 +11,7 @@ data:
 
 train:
     batch_size: 128
-    epochs: 10
+    epochs: 100
     verbose: True
 
 model:
@@ -21,7 +21,7 @@ model:
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
-    similaritymeasure: "cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
+    similaritymeasure: "weighted_cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
     embedding: "sentence" #sentence or word
     project: True
 
@@ -45,3 +45,6 @@ loss:
     lambda3: 0.3
     lambda4: 0.1
     lambda5: 0.001
+
+explain:
+    max_numbers: 3
