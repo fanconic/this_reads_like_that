@@ -1,6 +1,6 @@
-name: "L1_similaritye"
+name: "test"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
     dataset: "reviews"
@@ -11,7 +11,7 @@ data:
 
 train:
     batch_size: 128
-    epochs: 100
+    epochs: 10
     verbose: True
 
 model:
@@ -21,7 +21,7 @@ model:
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
-    similaritymeasure: "dot_product" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
+    similaritymeasure: "cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
     embedding: "sentence" #sentence or word
     project: True
 

@@ -348,10 +348,10 @@ def proto_loss(prototype_distances, label, model, config, device):
             .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
         )
         # decrease self-similarity to not be max
-        proto_sim += torch.diag(-200 * torch.ones(config["model"]["n_prototypes"])).to(
+        proto_sim += torch.diag(1e8 * torch.ones(config["model"]["n_prototypes"])).to(
             device
         )
-        proto_min_sim, _ = torch.max(proto_sim, dim=1)
+        proto_min_sim, _ = torch.min(proto_sim, dim=1)
         divers_loss = torch.mean(proto_min_sim)
 
     else:
@@ -515,11 +515,12 @@ def load_model_and_dataloader(wandb, config, device):
         test_loader,
         train_ds,
         train_loader_unshuffled,
+        test_ds,
     )
 
 
 def get_nearest_sent(config, model, train_loader, device):
-    """Retrueve the nearest sentence
+    """Retrieve the nearest sentence
     Args:
         config: configuration dict
         model: classification model
@@ -567,6 +568,22 @@ def get_nearest_sent(config, model, train_loader, device):
         nearest_ids[:, 0], :
     ]  # model.protolayer[:,13:15] goes to nan in optimizer
     return new_proto_emb
+
+
+def get_nearest(model, train_batches_unshuffled, text_train, labels_train, device):
+    model.eval()
+    dist, w = [], []
+    with torch.no_grad():
+        for _, batch, mask in train_batches_unshuffled:
+            batch = batch.to(device).unsqueeze(1)
+            mask = mask.to(device).unsqueeze(1)
+            distances, top_w = model.get_dist(batch, mask)
+            dist.append(distances)
+            w.append(top_w)
+        proto_ids, proto_texts, [nearest_sent, nearest_words] = model.nearest_neighbors(
+            dist, w, text_train, labels_train
+        )
+    return proto_ids, proto_texts, [nearest_sent, nearest_words]
 
 
 def project(config, model, train_loader, device, last_proj):

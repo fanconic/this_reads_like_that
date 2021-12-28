@@ -188,3 +188,16 @@ class ProtoNet(nn.Module):
             embedding = embedding.unsqueeze(0).unsqueeze(0)
         mask = torch.ones(embedding.shape)  # required for attention models
         return embedding, mask, (labels - 1)
+
+    @staticmethod
+    def nearest_neighbors(distances, _, text_train, labels_train):
+        distances = torch.cat(distances)
+        _, nearest_ids = torch.topk(distances, 1, dim=0, largest=False)
+        nearest_ids = nearest_ids.cpu().detach().numpy().T
+        proto_id = [
+            f"P{proto + 1} | sentence {index} | label {labels_train[index]} | text: "
+            for proto, sent in enumerate(nearest_ids)
+            for index in sent
+        ]
+        proto_texts = [f"{text_train[index]}" for sent in nearest_ids for index in sent]
+        return proto_id, proto_texts, [nearest_ids, []]
