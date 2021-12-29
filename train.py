@@ -23,6 +23,7 @@ from tqdm import tqdm
 from src.models.models import ProtoNet
 import pandas as pd
 
+
 def set_seed(seed):
     """Set all random seeds"""
     random.seed(seed)

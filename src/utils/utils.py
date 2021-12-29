@@ -11,7 +11,10 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModel
 from torch import nn, optim
 import re
-from src.utils.rational_utils import load_datasets as load_rational_dataset, load_documents
+from src.utils.rational_utils import (
+    load_datasets as load_rational_dataset,
+    load_documents,
+)
 
 tok = TreebankWordTokenizer()
 detok = TreebankWordDetokenizer()
@@ -127,14 +130,21 @@ def load_data(name, **kwargs):
 
     elif name == "reviews":
         train_ds = get_reviews(
-            data_dir=kwargs.get("data_dir", "."), data_name=kwargs.get("data_name", ""), split="train"
+            data_dir=kwargs.get("data_dir", "."),
+            data_name=kwargs.get("data_name", ""),
+            split="train",
         )
         val_ds = get_reviews(
-            data_dir=kwargs.get("data_dir", "."), data_name=kwargs.get("data_name", ""), split="val"
+            data_dir=kwargs.get("data_dir", "."),
+            data_name=kwargs.get("data_name", ""),
+            split="val",
         )
         test_ds = get_reviews(
-            data_dir=kwargs.get("data_dir", "."), data_name=kwargs.get("data_name", ""), split="test"
+            data_dir=kwargs.get("data_dir", "."),
+            data_name=kwargs.get("data_name", ""),
+            split="test",
         )
+        return train_ds, val_ds, test_ds
 
     elif name == "movie_rationals":
         data_dir = kwargs.get("data_dir", ".")
@@ -146,14 +156,23 @@ def load_data(name, **kwargs):
 
         train_ds = get_text_rationals(train, documents)
         val_ds = get_text_rationals(val, documents)
-        test_ds = get_text_rationals(test, documents)
+
+        test_ds_full = get_text_rationals(test, documents)
+        test_ds_rat = get_text_rationals(
+            test, documents, complete=False, only_rationals=True
+        )
+        test_ds_norat = get_text_rationals(
+            test, documents, complete=False, only_rationals=False
+        )
+
+        return train_ds, val_ds, (test_ds_full, test_ds_rat, test_ds_norat)
     else:
         raise NotImplemented
     return train_ds, test_ds
 
 
 def get_text_rationals(data, documents, complete=True, only_rationals=False):
-    """ Extracts the text from the annotations
+    """Extracts the text from the annotations
     Args:
         data: list containing all the annotations
         documents: dict containing all the documents as list of lists of words and symbols
@@ -164,7 +183,7 @@ def get_text_rationals(data, documents, complete=True, only_rationals=False):
     """
     label_map = {"NEG": 1, "POS": 2}
     dataset = []
-    
+
     if complete:
         for ann in data:
             evidences = ann.all_evidences()
@@ -174,14 +193,37 @@ def get_text_rationals(data, documents, complete=True, only_rationals=False):
             except:
                 continue
             doc = documents[docid]
-            single_doc=[]
+            single_doc = []
             for sent in doc:
-                sentence = ' '.join(sent)
+                sentence = " ".join(sent)
                 single_doc.append(sentence)
             dataset.append((label, " ".join(single_doc)))
     else:
-        pass
-    
+        if only_rationals:
+            for ann in data:
+                evidences = ann.all_evidences()
+                label = label_map[ann.classification]
+                single_doc = []
+                for ev in evidences:
+                    single_doc.append(ev.text)
+                dataset.append((label, " ".join(single_doc)))
+        else:
+            for ann in data:
+                evidences = ann.all_evidences()
+                label = label_map[ann.classification]
+                try:
+                    (docid,) = set(ev.docid for ev in evidences)
+                except:
+                    continue
+                doc = documents[docid]
+                single_doc = []
+                for sent in doc:
+                    sentence = " ".join(sent)
+                    single_doc.append(sentence)
+                full_doc = " ".join(single_doc)
+                for ev in evidences:
+                    full_doc = full_doc.replace(ev.text, "")
+                dataset.append((label, full_doc))
     return dataset
 
 
@@ -418,7 +460,7 @@ def save_embedding(embedding, mask, label, config, set_name):
     """
     path = os.path.join("./src/data/embedding", config["data"]["data_name"])
     os.makedirs(path, exist_ok=True, mode=0o777)
-    name = config["model"]["name"] + "_" + set_name
+    name = config["model"]["submodel"] + "_" + set_name
     path_e = os.path.join(path, name + ".pt")
     torch.save(embedding, path_e)
     path_m = os.path.join(path, name + "_mask.pt")
@@ -458,23 +500,44 @@ def load_model_and_dataloader(wandb, config, device):
     Returns:
         model and dataloaders
     """
-    train_iter, test_iter = load_data(
-        config["data"]["dataset"],
-        data_dir=config["data"]["data_dir"],
-        data_name=config["data"]["data_name"],
-    )
-    # obtain training indices that will be used for validation
-    num_train = len(train_iter)
-    indices = list(range(num_train))
-    np.random.shuffle(indices)
-    split = int(np.floor(config["data"]["val_size"] * num_train))
-    train_idx, valid_idx = indices[split:], indices[:split]
+    # Entered if no validation set is predefined
+    try:
+        train_iter, test_iter = load_data(
+            config["data"]["dataset"],
+            data_dir=config["data"]["data_dir"],
+            data_name=config["data"]["data_name"],
+        )
+        # obtain training indices that will be used for validation
+        num_train = len(train_iter)
+        indices = list(range(num_train))
+        np.random.shuffle(indices)
+        split = int(np.floor(config["data"]["val_size"] * num_train))
+        train_idx, valid_idx = indices[split:], indices[:split]
 
-    train_iter = list(train_iter)
-    test_ds = list(test_iter)
+        train_iter = list(train_iter)
+        test_ds = list(test_iter)
 
-    train_ds = torch.utils.data.Subset(train_iter, train_idx)
-    val_ds = torch.utils.data.Subset(train_iter, valid_idx)
+        train_ds = torch.utils.data.Subset(train_iter, train_idx)
+        val_ds = torch.utils.data.Subset(train_iter, valid_idx)
+
+    # This is entered if a validation set is predefined
+    except:
+        train_iter, val_iter, test_iter = load_data(
+            config["data"]["dataset"],
+            data_dir=config["data"]["data_dir"],
+            data_name=config["data"]["data_name"],
+        )
+
+        train_ds = list(train_iter)
+        val_ds = list(val_iter)
+
+        # This checks if we are doing a faithfullness experiment with multiple test datasets
+        rationale_experiment = False
+        if isinstance(test_iter, tuple):
+            rationale_experiment = True
+            test_ds, test_ds_rat, test_ds_norat = test_iter
+        else:
+            test_ds = list(test_iter)
 
     # build the tokenized vocabulary:
     if not config["model"]["embedding"] == "sentence":
@@ -499,6 +562,21 @@ def load_model_and_dataloader(wandb, config, device):
             config=config,
         )
 
+        if rationale_experiment:
+            test_loader, _ = build_loader(
+                test_ds_rat,
+                vocab=vocab,
+                device=device,
+                batch_size=config["train"]["batch_size"],
+                config=config,
+            )
+            test_loader, _ = build_loader(
+                test_ds_norat,
+                vocab=vocab,
+                device=device,
+                batch_size=config["train"]["batch_size"],
+                config=config,
+            )
         # get the model
         model = get_model(vocab_size=len(vocab), model_configs=config["model"]).to(
             device
@@ -511,6 +589,15 @@ def load_model_and_dataloader(wandb, config, device):
             embedding_train, mask_train, labels_train = load_embedding(config, "train")
             embedding_val, mask_val, labels_val = load_embedding(config, "val")
             embedding_test, mask_test, labels_test = load_embedding(config, "test")
+            if rationale_experiment:
+                embedding_test_rat, mask_test_rat, labels_test_rat = load_embedding(
+                    config, "test_rat"
+                )
+                (
+                    embedding_test_norat,
+                    mask_test_norat,
+                    labels_test_norat,
+                ) = load_embedding(config, "test_norat")
         else:
             embedding_train, mask_train, labels_train = model.compute_embedding(
                 train_ds, config, device
@@ -524,6 +611,32 @@ def load_model_and_dataloader(wandb, config, device):
             save_embedding(embedding_train, mask_train, labels_train, config, "train")
             save_embedding(embedding_val, mask_val, labels_val, config, "val")
             save_embedding(embedding_test, mask_test, labels_test, config, "test")
+            if rationale_experiment:
+                (
+                    embedding_test_rat,
+                    mask_test_rat,
+                    labels_test_rat,
+                ) = model.compute_embedding(test_ds_rat, config, device)
+                save_embedding(
+                    embedding_test_rat,
+                    mask_test_rat,
+                    labels_test_rat,
+                    config,
+                    "test_rat",
+                )
+                (
+                    embedding_test_norat,
+                    mask_test_norat,
+                    labels_test_norat,
+                ) = model.compute_embedding(test_ds_norat, config, device)
+                save_embedding(
+                    embedding_test_norat,
+                    mask_test_norat,
+                    labels_test_norat,
+                    config,
+                    "test_norat",
+                )
+
             torch.cuda.empty_cache()  # free up language model from GPU
         train_loader = torch.utils.data.DataLoader(
             list(zip(labels_train, embedding_train, mask_train)),
@@ -553,15 +666,46 @@ def load_model_and_dataloader(wandb, config, device):
             pin_memory=True,
             num_workers=0,
         )
-    return (
-        model,
-        train_loader,
-        val_loader,
-        test_loader,
-        train_ds,
-        train_loader_unshuffled,
-        test_ds,
-    )
+
+        if rationale_experiment:
+            test_loader_rat = torch.utils.data.DataLoader(
+                list(zip(labels_test_rat, embedding_test_rat, mask_test_rat)),
+                batch_size=config["train"]["batch_size"],
+                shuffle=False,
+                pin_memory=True,
+                num_workers=0,
+            )
+            test_loader_norat = torch.utils.data.DataLoader(
+                list(zip(labels_test_norat, embedding_test_norat, mask_test_norat)),
+                batch_size=config["train"]["batch_size"],
+                shuffle=False,
+                pin_memory=True,
+                num_workers=0,
+            )
+
+    if rationale_experiment:
+        return (
+            model,
+            train_loader,
+            val_loader,
+            test_loader,
+            train_ds,
+            train_loader_unshuffled,
+            test_ds,
+            test_loader_rat,
+            test_loader_norat,
+        )
+
+    else:
+        return (
+            model,
+            train_loader,
+            val_loader,
+            test_loader,
+            train_ds,
+            train_loader_unshuffled,
+            test_ds,
+        )
 
 
 def get_nearest_sent(config, model, train_loader, device):

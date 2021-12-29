@@ -6,13 +6,13 @@ data:
     dataset: "movie_rationals"
     val_size: 0.2
     data_name: "movies"
-    data_dir: "../../dataset"
-    compute_emb: True
+    data_dir: "./src/data"
+    compute_emb: False
 
 train:
     run_training: True
     batch_size: 128
-    epochs: 100
+    epochs: 30
     verbose: True
 
 model:

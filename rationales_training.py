@@ -23,6 +23,7 @@ from tqdm import tqdm
 from src.models.models import ProtoNet
 import pandas as pd
 
+
 def set_seed(seed):
     """Set all random seeds"""
     random.seed(seed)
@@ -51,6 +52,8 @@ def main(config, random_state=0):
         train_ds,
         train_loader_unshuffled,
         test_ds,
+        test_loader_rat,
+        test_loader_norat,
     ) = load_model_and_dataloader(wandb, config, device)
 
     # prepare teh optimizer
@@ -114,28 +117,12 @@ def main(config, random_state=0):
             torch.load("./saved_models/best_" + config["name"] + ".pth")
         )
 
+    print("Full Test Dataset:")
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
-
-    # Visualize the prototypes
-    if config["model"]["embedding"] == "sentence":
-        important_words = prototype_visualization(
-            config, model, train_ds, train_loader_unshuffled, device
-        )
-
-    # Create explanation CSV
-    explain(
-        config,
-        model,
-        test_ds,
-        train_ds,
-        test_loader,
-        train_loader_unshuffled,
-        important_words,
-        device,
-    )
-
-    # Check the faithfullness
-    faithful(config, model, test_ds, test_loader, device)
+    print("Only Rationals:")
+    test(model, test_loader_rat, criterion, device, verbose, gpt2_bert_lm)
+    print("No Rationals:")
+    test(model, test_loader_norat, criterion, device, verbose, gpt2_bert_lm)
 
 
 def train(
