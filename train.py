@@ -23,6 +23,7 @@ from tqdm import tqdm
 from src.models.models import ProtoNet
 import pandas as pd
 from sklearn.metrics import balanced_accuracy_score
+from copy import deepcopy
 
 torch.autograd.set_detect_anomaly(True)
 
@@ -64,38 +65,59 @@ def main(config, random_state=0):
     # loss function
     criterion = nn.CrossEntropyLoss()
 
+    min_val_loss = np.inf
+    best_model = None
+
     # training loop
     epochs = config["train"]["epochs"]
-    for epoch in range(epochs):
-        train(
-            model,
-            train_loader,
-            optimizer,
-            criterion,
-            epoch,
-            epochs,
-            device,
-            verbose,
-            gpt2_bert_lm,
-        )
-        val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
-        # project prototypes all 5 Epochs. Start projection after 50% of epochs and let last 3 epochs be only final layer training
-        if (
-            (epoch + 1) % 5 == 0
-            and config["model"]["project"]
-            and (epochs * 5 // 10) < (epoch + 1) < (epochs - 3)
-        ):
-            with torch.no_grad():
-                model = project(config, model, train_loader, device, False)
-                assert model.protolayer.requires_grad == True
-        # final projection, train only classification layer
-        if (epoch + 1) == (epochs - 3):
-            with torch.no_grad():
-                model = project(config, model, train_loader, device, True)
-                model.protolayer.requires_grad = False
+    if config["train"]["run_training"]:
+        for epoch in range(epochs):
+            # training loop
+            train(
+                model,
+                train_loader,
+                optimizer,
+                criterion,
+                epoch,
+                epochs,
+                device,
+                verbose,
+                gpt2_bert_lm,
+            )
+            
+            # Validation loop
+            val_loss = val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
+            if val_loss < min_val_loss:
+                min_val_loss = val_loss
+                best_model = deepcopy(model)
+                torch.save(model.state_dict(), "./saved_models/best_"+config["name"]+".pth") 
 
-        scheduler.step()
+            # project prototypes all 5 Epochs. Start projection after 50% of epochs and let last 3 epochs be only final layer training
+            if (
+                (epoch + 1) % 5 == 0
+                and config["model"]["project"]
+                and (epochs * 5 // 10) < (epoch + 1) < (epochs - 3)
+            ):
+                with torch.no_grad():
+                    model = project(config, model, train_loader, device, False)
+                    assert model.protolayer.requires_grad == True
+            # final projection, train only classification layer
+            if (epoch + 1) == (epochs - 3):
+                with torch.no_grad():
+                    model = project(config, model, train_loader, device, True)
+                    model.protolayer.requires_grad = False
+
+            scheduler.step()
+
+    # Test the model
+    if config["train"]["run_training"]:
+        model = best_model
+    else:
+        model.load_state_dict(torch.load("./saved_models/best_"+config["name"]+".pth"))
+      
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
+
+    # Visualize the prototypes
     if config["model"]["embedding"] == "sentence":
         important_words = prototype_visualization(
             config, model, train_ds, train_loader_unshuffled, device
@@ -224,10 +246,11 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
                 val_loader.set_postfix(
                     loss=val_loss.item(), acc=val_total_acc / val_total_count
                 )
+    val_loss = sum(val_losses) / len(val_losses)
     wandb.log(
         {
             "epoch": epoch,
-            "val_loss": sum(val_losses) / len(val_losses),
+            "val_loss": val_loss,
             "val_accuracy": val_total_acc / val_total_count,
         }
     )
@@ -237,7 +260,9 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
         "| epoch {:3d} | validation accuracy {:8.3f}".format(
             epoch, val_total_acc / val_total_count
         )
-    )
+    ) 
+    
+    return val_loss
 
 
 def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
@@ -311,8 +336,6 @@ def explain(
         device: current device
     """
     model.eval()
-    # "convert" prototype embedding to text (take text of nearest training sample)
-
     text_train = []
     labels_train = []
     text_test = []
@@ -320,6 +343,7 @@ def explain(
     embedding_test = torch.Tensor([])
     mask_test = torch.Tensor([])
 
+    # Extract all the texts and embeddings to loop through them
     for y, x in train_ds:
         labels_train.append(y - 1)
         text_train.append(x)
@@ -330,12 +354,14 @@ def explain(
         embedding_test = torch.cat([embedding_test, x])
         mask_test = torch.cat([mask_test, m])
 
+    # Get the prototypes
     _, proto_texts, _ = get_nearest(
         model, train_batches_unshuffled, text_train, labels_train, device
     )
     weights = model.get_proto_weights()
     explained_test_samples = []
     with torch.no_grad():
+        # Create the first values, which are a descriptiion how to read the CSV
         values = [
             f"test sample \n",
             f"true label \n",
@@ -350,10 +376,9 @@ def explain(
             values.append(f"id_{j + 1} \n")
             values.append(f"similarity_{j + 1} \n")
             values.append(f"weight_{j + 1} \n")
-            
-
         explained_test_samples.append(values)
 
+        # Go through all the test samples and show their closes prototypes
         for i in range(len(labels_test)):
             emb = embedding_test[i].to(device).unsqueeze(0).unsqueeze(0)
             mask = mask_test[i].to(device).unsqueeze(0).unsqueeze(0)
@@ -366,6 +391,8 @@ def explain(
                 prototype_distances.cpu().detach().squeeze() * weights[:, predicted].T
             )
             top_scores = similarity_score
+
+            # Sort the best scoring prototypes and add them to the explanation CSV
             sorted = torch.argsort(top_scores, descending=True)
             values = [
                 "".join(text_test[i]) + "\n",
@@ -374,7 +401,7 @@ def explain(
                 f"{probability[0]:.3f}\n",
                 f"{probability[1]:.3f}\n",
             ]
-            for i,j in enumerate(sorted):
+            for i, j in enumerate(sorted):
                 idx = j.item()
                 nearest_proto = proto_texts[idx]
                 values.append(f"{nearest_proto}\n")
@@ -383,13 +410,14 @@ def explain(
                 values.append(f"{idx + 1}\n")
                 values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}\n")
                 values.append(f"{float(-weights[idx, predicted]):.3f}\n")
-                if i == config["explain"]["max_numbers"]-1:
+                if i == config["explain"]["max_numbers"] - 1:
                     break
             explained_test_samples.append(values)
 
     import csv
 
-    save_path = os.path.join(".", config["name"] +"_explained.csv")
+    # Write everything to CSV
+    save_path = os.path.join(".", config["name"] + "_explained.csv")
     with open(save_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerows(explained_test_samples)
@@ -405,11 +433,11 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
         device: current device
         k (default 1): number of prototypes to be removed
     """
+    # Extract all the texts and embeddings to loop through them
     text_test = []
     labels_test = []
     embedding_test = torch.Tensor([])
     mask_test = torch.Tensor([])
-
     for y, x in test_ds:
         labels_test.append(y - 1)
         text_test.append(x)
@@ -417,29 +445,35 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
         embedding_test = torch.cat([embedding_test, x])
         mask_test = torch.cat([mask_test, m])
 
-    data_explained = pd.read_csv(
-        os.path.join(".", config["name"] +"_explained.csv")
-    )
+    # Read the csv that was previously created in explain()
+    data_explained = pd.read_csv(os.path.join(".", config["name"] + "_explained.csv"))
     tbl = wandb.Table(data=data_explained)
     wandb.log({"Explained": tbl})
 
-    score = [f"score_{i} \n" for i in range(1, config["explain"]["max_numbers"]+1)]
+    score = [f"id_{i} \n" for i in range(1, config["explain"]["max_numbers"] + 1)]
 
-    _, top_ids = torch.topk(torch.tensor(data_explained[score].to_numpy()), k=k)
+    # extract the top k prototypes
+    top_ids = torch.tensor(data_explained[score].to_numpy())[:,:k] - 1
 
+    # Create a new
     explained_test_samples = []
     values = []
     all_preds = []
     with torch.no_grad():
+        # Create the explanation of the CSV first
         values.append(f"test sample \n")
         values.append(f"true label \n")
         values.append(f"predicted label \n")
         values.append(f"probability class 0 \n")
         values.append(f"probability class 1 \n")
         explained_test_samples.append(values)
+
+        # Iterate through all the test samples
         for i in range(len(labels_test)):
             weights = model.fc.weight.detach().clone()
             tmp = weights.clone()
+
+            # set the weights of the best prototype to zero and make a prediction
             weights[:, top_ids[i]] = torch.zeros(config["model"]["n_classes"], 1).to(
                 device
             )
@@ -454,6 +488,7 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
             )
             all_preds += [predicted.cpu().detach().numpy().tolist()]
 
+            # Append values for the CSV
             values = [
                 "".join(text_test[i]) + "\n",
                 f"{int(labels_test[i])}\n",
@@ -463,14 +498,10 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
             ]
             explained_test_samples.append(values)
 
+    # Calculate new Accuracy
     acc_test = (np.array(labels_test) == np.array(all_preds)).sum() / len(labels_test)
+    wandb.log({f"test_accuracy_{k}_proto_removed": acc_test})
     print(f"New Accuracy without {k} best prototypes: {acc_test * 100}")
-    """
-    import csv
-    save_path = os.path.join(os.path.dirname("."), "compr_" + config["name"] + ".csv")
-    with open(save_path, "w", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerows(explained_test_samples)"""
 
 
 if __name__ == "__main__":

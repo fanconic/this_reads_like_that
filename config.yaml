@@ -1,6 +1,6 @@
-name: "weighted cosine with explanation"
+name: "test"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
     dataset: "reviews"
@@ -10,8 +10,9 @@ data:
     compute_emb: False
 
 train:
+    run_training: True
     batch_size: 128
-    epochs: 100
+    epochs: 10
     verbose: True
 
 model:

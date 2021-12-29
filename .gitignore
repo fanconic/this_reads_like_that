@@ -1,7 +1,7 @@
 .vscode
 experiment_outputs/*
 experiment_configs/*
-model_weights/*
+saved_models/*
 wandb
 
 # Byte-compiled / optimized / DLL files
