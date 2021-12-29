@@ -84,13 +84,24 @@ def main(config, random_state=0):
                 verbose,
                 gpt2_bert_lm,
             )
-            
+
             # Validation loop
-            val_loss = val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm)
+            val_loss = val(
+                model,
+                val_loader,
+                criterion,
+                epoch,
+                epochs,
+                device,
+                verbose,
+                gpt2_bert_lm,
+            )
             if val_loss < min_val_loss:
                 min_val_loss = val_loss
                 best_model = deepcopy(model)
-                torch.save(model.state_dict(), "./saved_models/best_"+config["name"]+".pth") 
+                torch.save(
+                    model.state_dict(), "./saved_models/best_" + config["name"] + ".pth"
+                )
 
             # project prototypes all 5 Epochs. Start projection after 50% of epochs and let last 3 epochs be only final layer training
             if (
@@ -113,8 +124,10 @@ def main(config, random_state=0):
     if config["train"]["run_training"]:
         model = best_model
     else:
-        model.load_state_dict(torch.load("./saved_models/best_"+config["name"]+".pth"))
-      
+        model.load_state_dict(
+            torch.load("./saved_models/best_" + config["name"] + ".pth")
+        )
+
     test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
 
     # Visualize the prototypes
@@ -260,8 +273,8 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
         "| epoch {:3d} | validation accuracy {:8.3f}".format(
             epoch, val_total_acc / val_total_count
         )
-    ) 
-    
+    )
+
     return val_loss
 
 
@@ -417,7 +430,7 @@ def explain(
     import csv
 
     # Write everything to CSV
-    save_path = os.path.join(".", config["name"] + "_explained.csv")
+    save_path = os.path.join("./explanations", config["name"] + "_explained.csv")
     with open(save_path, "w", newline="") as f:
         writer = csv.writer(f)
         writer.writerows(explained_test_samples)
@@ -446,14 +459,14 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
         mask_test = torch.cat([mask_test, m])
 
     # Read the csv that was previously created in explain()
-    data_explained = pd.read_csv(os.path.join(".", config["name"] + "_explained.csv"))
+    data_explained = pd.read_csv(os.path.join("./explanations", config["name"] + "_explained.csv"))
     tbl = wandb.Table(data=data_explained)
     wandb.log({"Explained": tbl})
 
     score = [f"id_{i} \n" for i in range(1, config["explain"]["max_numbers"] + 1)]
 
     # extract the top k prototypes
-    top_ids = torch.tensor(data_explained[score].to_numpy())[:,:k] - 1
+    top_ids = torch.tensor(data_explained[score].to_numpy())[:, :k] - 1
 
     # Create a new
     explained_test_samples = []
