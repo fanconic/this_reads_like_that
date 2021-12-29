@@ -1,13 +1,13 @@
-name: "weighted_cosine_explanation"
+name: "test"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
-    dataset: "reviews"
+    dataset: "movie_rationals"
     val_size: 0.2
-    data_name: "rt-polarity"
-    data_dir: "./src/data"
-    compute_emb: False
+    data_name: "movies"
+    data_dir: "../../dataset"
+    compute_emb: True
 
 train:
     run_training: True

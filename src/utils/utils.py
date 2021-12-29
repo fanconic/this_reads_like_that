@@ -11,6 +11,7 @@ import numpy as np
 from transformers import AutoTokenizer, AutoModel
 from torch import nn, optim
 import re
+from src.utils.rational_utils import load_datasets as load_rational_dataset, load_documents
 
 tok = TreebankWordTokenizer()
 detok = TreebankWordDetokenizer()
@@ -126,18 +127,62 @@ def load_data(name, **kwargs):
 
     elif name == "reviews":
         train_ds = get_reviews(
-            data_dir=kwargs["data_dir"], data_name=kwargs["data_name"], split="train"
+            data_dir=kwargs.get("data_dir", "."), data_name=kwargs.get("data_name", ""), split="train"
         )
         val_ds = get_reviews(
-            data_dir=kwargs["data_dir"], data_name=kwargs["data_name"], split="val"
+            data_dir=kwargs.get("data_dir", "."), data_name=kwargs.get("data_name", ""), split="val"
         )
         test_ds = get_reviews(
-            data_dir=kwargs["data_dir"], data_name=kwargs["data_name"], split="test"
+            data_dir=kwargs.get("data_dir", "."), data_name=kwargs.get("data_name", ""), split="test"
         )
 
+    elif name == "movie_rationals":
+        data_dir = kwargs.get("data_dir", ".")
+        data_name = kwargs.get("data_name", "")
+        data_root = os.path.join(data_dir, data_name)
+
+        documents = load_documents(data_root)
+        train, val, test = load_rational_dataset(data_root)
+
+        train_ds = get_text_rationals(train, documents)
+        val_ds = get_text_rationals(val, documents)
+        test_ds = get_text_rationals(test, documents)
     else:
         raise NotImplemented
     return train_ds, test_ds
+
+
+def get_text_rationals(data, documents, complete=True, only_rationals=False):
+    """ Extracts the text from the annotations
+    Args:
+        data: list containing all the annotations
+        documents: dict containing all the documents as list of lists of words and symbols
+        complete (default True): include all the rationals in the text
+        only_rationals (default False): extract only the rationals
+    Returns:
+        dataset: returns the dataset with labels and text
+    """
+    label_map = {"NEG": 1, "POS": 2}
+    dataset = []
+    
+    if complete:
+        for ann in data:
+            evidences = ann.all_evidences()
+            label = label_map[ann.classification]
+            try:
+                (docid,) = set(ev.docid for ev in evidences)
+            except:
+                continue
+            doc = documents[docid]
+            single_doc=[]
+            for sent in doc:
+                sentence = ' '.join(sent)
+                single_doc.append(sentence)
+            dataset.append((label, " ".join(single_doc)))
+    else:
+        pass
+    
+    return dataset
 
 
 def get_reviews(data_dir, data_name, split="train"):

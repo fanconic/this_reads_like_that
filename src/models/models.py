@@ -10,7 +10,6 @@ from transformers import (
 )
 from sentence_transformers import SentenceTransformer
 import torch.nn.functional as F
-from sentence_transformers import SentenceTransformer
 import numpy as np
 
 
