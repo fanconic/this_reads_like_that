@@ -1,11 +1,11 @@
-name: "rationals_suff_compr"
+name: "Protovis"
 random_state: 42
-wandb_logging: True
+wandb_logging: False
 
 data:
-    dataset: "movie_rationals"
+    dataset: "reviews"
     val_size: 0.2
-    data_name: "movies"
+    data_name: "rt-polarity"
     data_dir: "./src/data"
     compute_emb: False
 

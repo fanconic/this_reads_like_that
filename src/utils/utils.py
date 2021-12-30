@@ -445,6 +445,7 @@ def proto_loss(prototype_distances, label, model, config, device):
         print("loss not defined")
         assert False
     l1_loss = model.fc.weight.norm(p=1) / config["model"]["n_prototypes"]
+    
 
     return distr_loss, clust_loss, sep_loss, divers_loss, l1_loss
 
@@ -918,7 +919,8 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
         # Choose words that give 75% of distance of all 5 words
         proto_word_dist = proto_distance - nearest_vals[0, nth_proto]
         cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
-        cutoff[0] = True  # Always use first word
+        # Include the word responsible for the 75% drop 
+        cutoff[sum(cutoff)] = True 
         keep_words.append([proto_words[i] for i in np.where(cutoff)[0]])
     for j in range(config["model"]["n_classes"]):
         index = np.where(config["model"]["prototype class"][:, j] == 1)[0]
