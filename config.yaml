@@ -1,6 +1,6 @@
-name: "test"
+name: "rationals_suff_compr"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
     dataset: "movie_rationals"
@@ -12,7 +12,7 @@ data:
 train:
     run_training: True
     batch_size: 128
-    epochs: 30
+    epochs: 100
     verbose: True
 
 model:
@@ -28,7 +28,7 @@ model:
 
 optimizer:
     name: "Adam" #SGD or Adam
-    lr: 0.001
+    lr: 0.005
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]
