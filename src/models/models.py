@@ -178,6 +178,38 @@ class ProtoNet(nn.Module):
                 )
                 if idx % 100 == 0:
                     print(idx)
+        elif (
+            config["model"]["submodel"] == "roberta"
+            and config["model"]["embedding"] == "sentence"
+        ):
+            LM = SentenceTransformer("sentence-transformers/all-distilroberta-v1", device=device)
+            labels = torch.empty((len(x)))
+            embedding = torch.empty((len(x), config["model"]["embed_dim"]))
+            for idx, (label, input) in enumerate(x):
+                labels[idx] = label
+                embedding[idx] = (
+                    LM.encode(input, convert_to_tensor=True, device=device)
+                    .cpu()
+                    .detach()
+                )
+                if idx % 100 == 0:
+                    print(idx)
+        elif (
+            config["model"]["submodel"] == "mpnet"
+            and config["model"]["embedding"] == "sentence"
+        ):
+            LM = SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device=device)
+            labels = torch.empty((len(x)))
+            embedding = torch.empty((len(x), config["model"]["embed_dim"]))
+            for idx, (label, input) in enumerate(x):
+                labels[idx] = label
+                embedding[idx] = (
+                    LM.encode(input, convert_to_tensor=True, device=device)
+                    .cpu()
+                    .detach()
+                )
+                if idx % 100 == 0:
+                    print(idx)
         else:
             raise NotImplemented
 

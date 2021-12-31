@@ -393,6 +393,28 @@ def explain(
             model_emb = AutoModel.from_pretrained(
                 "sentence-transformers/bert-large-nli-mean-tokens"
             )
+        elif (
+        config["model"]["embedding"] == "sentence"
+        and config["model"]["submodel"] == "roberta"
+        ):
+            tokenizer = AutoTokenizer.from_pretrained(
+                "sentence-transformers/all-distilroberta-v1"
+            )
+            model_emb = AutoModel.from_pretrained(
+                "sentence-transformers/all-distilroberta-v1"
+            )
+        elif (
+        config["model"]["embedding"] == "sentence"
+        and config["model"]["submodel"] == "mpnet"
+        ):
+            tokenizer = AutoTokenizer.from_pretrained(
+                "sentence-transformers/all-mpnet-base-v2"
+            )
+            model_emb = AutoModel.from_pretrained(
+                "sentence-transformers/all-mpnet-base-v2"
+            )
+
+
         
 
         # Go through all the test samples and show their closest prototypes
