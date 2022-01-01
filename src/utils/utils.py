@@ -509,6 +509,7 @@ def load_model_and_dataloader(wandb, config, device):
             data_name=config["data"]["data_name"],
         )
         # obtain training indices that will be used for validation
+        rationale_experiment = False
         num_train = len(train_iter)
         indices = list(range(num_train))
         np.random.shuffle(indices)
