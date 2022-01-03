@@ -1,4 +1,4 @@
-name: "mpnet"
+name: "Test Manual Sentences"
 random_state: 42
 wandb_logging: False
 
@@ -28,7 +28,7 @@ model:
 
 optimizer:
     name: "Adam" #SGD or Adam
-    lr: 0.0005
+    lr: 0.005
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]
@@ -49,3 +49,4 @@ loss:
 
 explain:
     max_numbers: 3
+    manual_input: False

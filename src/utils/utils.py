@@ -940,7 +940,10 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
 
         # Choose words that give 75% of distance of all 5 words
         proto_word_dist = proto_distance - nearest_vals[0, nth_proto]
-        cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+        if proto_word_dist[-1] < 0: 
+            cutoff = proto_word_dist>=0
+        else:
+            cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
         # Include the word responsible for the 75% drop 
         cutoff[sum(cutoff)] = True 
         keep_words.append([proto_words[i] for i in np.where(cutoff)[0]])

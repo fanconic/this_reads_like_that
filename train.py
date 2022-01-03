@@ -139,8 +139,9 @@ def main(config, random_state=0):
         device,
     )
 
-    # Check the faithfullness
-    faithful(config, model, test_ds, test_loader, device)
+    # Check the faithfullness. Only if we did not add manual sentences as otherwise faithfulness is distorted by them
+    if config['explain']['manual_input'] != True:
+        faithful(config, model, test_ds, test_loader, device)
 
 
 def train(
@@ -415,10 +416,206 @@ def explain(
             )
 
 
-        
+        if config['explain']['manual_input'] == True:
+            manual_sentences = [
+                "NLP is a really interesting course!",
+                "NLP is not an interesting course!",
+                "NLP is not not an interesting course!",
+                "The movie's plot was just mediocre, but the stunning performance by Joaquin Phoenix will make the flick a hit."
+                ]
+            tokenized_proto = tokenizer(
+                            manual_sentences, padding=True, truncation=True, return_tensors="pt"
+                        )
+            
+                # Compute token embeddings
+            with torch.no_grad():
+                model_output = model_emb(**tokenized_proto)
+            # Perform pooling. In this case, mean pooling.
+            manual_sentence_embeddings = mean_pooling(
+                model_output, tokenized_proto["attention_mask"]
+            ).to(device)
+            for z in range(len(manual_sentences)):
+                mask = tokenized_proto['attention_mask'][z].to(device).unsqueeze(0).unsqueeze(0)
+                emb_manual = manual_sentence_embeddings[z].to(device).unsqueeze(0).unsqueeze(0)
+                predicted_label, prototype_distances = model.forward(emb_manual, mask)
+                predicted = torch.argmax(predicted_label, dim=-1).squeeze().cpu().detach()
+                probability = (
+                    torch.nn.functional.softmax(predicted_label, dim=-1).squeeze().tolist()
+                )
+                similarity_score = (
+                    prototype_distances.cpu().detach().squeeze() * weights[:, predicted].T
+                )
+                top_scores = similarity_score
+                # Sort the best scoring prototypes and add them to the explanation CSV
+                sorted = torch.argsort(top_scores, descending=True)
+                # Create Variations of all Sentence Embeddings by removing one word
+                keep_words = []
+                nearest_vals, _ =model.get_dist(emb_manual,_)
+                for nth_proto in range(config["explain"]["max_numbers"]):
+                    text_strings = manual_sentences[z]
+                    nearest_val_proto = nearest_vals[:,sorted[nth_proto]].cpu().detach().numpy()
+
+                    top_words = np.min(
+                        (5, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)))
+                    )
+                    text_words = []
+                    text_distance = np.empty(top_words)
+
+                    for nth_removed_word in range(
+                        top_words
+                    ):  # Iteratively remove most important words
+                        text = re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)
+                        sentence_variants = [
+                            text[:i] + text[i + 1 :] for i in range(len(text))
+                        ]
+                        left_word = [text[i] for i in range(len(text))]
+                        sentence_variants = [" ".join(i) for i in sentence_variants]
+                        tokenized_text = tokenizer(
+                            sentence_variants, padding=True, truncation=True, return_tensors="pt"
+                        )
+                        # Compute token embeddings
+                        with torch.no_grad():
+                            model_output = model_emb(**tokenized_text)
+                        # Perform pooling. In this case, mean pooling.
+                        sentence_embeddings = mean_pooling(
+                            model_output, tokenized_text["attention_mask"]
+                        ).to(device)
+                        # Calculate distance to orginial embedding of sentence.
+                        dist_per_word, _ = model.get_dist(sentence_embeddings.unsqueeze(1), _)
+                        dist_per_word = dist_per_word[:, sorted[nth_proto]]
+                        farthest_val, farthest_ids = torch.topk(
+                            dist_per_word, 1, dim=0, largest=True
+                        )  # Store largest distance
+                        text_words.append(left_word[farthest_ids])
+                        text_distance[nth_removed_word] = farthest_val
+                        text_strings = sentence_variants[farthest_ids]
+
+                    # Choose words that give 75% of distance of all 5 words
+                    proto_word_dist = text_distance - nearest_val_proto
+                    # Check that removing words made words move away
+                    if proto_word_dist[-1] < 0: 
+                        cutoff = proto_word_dist>=0
+                    else:
+                        cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+                    # Include the word responsible for the 75% drop 
+                    cutoff[sum(cutoff)] = True 
+                    keep_words.append([text_words[i] for i in np.where(cutoff)[0]])
+
+
+                # Calculate important words of prototypes wrt Sentence
+                protos_words = []
+                for nth_proto in range(config["explain"]["max_numbers"]):
+                    proto_strings = proto_texts[sorted[nth_proto]]
+                    nearest_val_proto = nearest_vals[:,sorted[nth_proto]].cpu().detach().numpy()
+                    top_words = np.min(
+                        (5, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings)))
+                    )
+                    proto_words = []
+                    proto_distance = np.empty(top_words)
+
+                    for nth_removed_word in range(
+                        top_words
+                    ):  # Iteratively remove most important words
+                        prototype = re.findall(r"[\w']+|[.,\":\[\]!?;]", proto_strings)
+                        sentence_variants = [
+                            prototype[:i] + prototype[i + 1 :] for i in range(len(prototype))
+                        ]
+                        left_word = [prototype[i] for i in range(len(prototype))]
+                        sentence_variants = [" ".join(i) for i in sentence_variants]
+                        tokenized_proto = tokenizer(
+                            sentence_variants, padding=True, truncation=True, return_tensors="pt"
+                        )
+                        # Compute token embeddings
+                        with torch.no_grad():
+                            model_output = model_emb(**tokenized_proto)
+                        # Perform pooling. In this case, mean pooling.
+                        sentence_embeddings = mean_pooling(
+                            model_output, tokenized_proto["attention_mask"]
+                        ).to(device)
+                        # Calculate distance to of truncated prototype to sentence.
+
+                        if config["model"]["similaritymeasure"] == "weighted_cosine":
+                            dist_per_word = -torch.sum(
+                                model.dim_weights * sentence_embeddings * emb_manual, dim=-1
+                            ) / torch.maximum(
+                                (
+                                    torch.sqrt(
+                                        torch.sum(model.dim_weights * torch.square(sentence_embeddings), dim=-1)
+                                    )
+                                    * torch.sqrt(
+                                        torch.sum(
+                                            model.dim_weights * torch.square(emb_manual), dim=-1
+                                        )
+                                    )
+                                ),
+                                torch.tensor(1e-8),
+                            )
+                        elif config["model"]["similaritymeasure"] == "cosine":
+                            dist_per_word = -F.cosine_similarity(
+                                emb_manual, sentence_embeddings, dim=-1
+                            )
+                        elif config["model"]["similaritymeasure"] == "L2":
+                            # prototype_distances = -nes_torch(embedding, self.protolayer, dim=-1)
+                            dist_per_word = (torch.cdist(
+                                sentence_embeddings.float(), emb_manual, p=2
+                            ).squeeze(1) / np.sqrt(model.dim)).squeeze(-1)
+                        elif config["model"]["similaritymeasure"] == "L1":
+                            dist_per_word = (torch.cdist(
+                                sentence_embeddings.float(), emb_manual, p=1
+                            ).squeeze(1) / model.dim).squeeze(-1)
+                        elif config["model"]["similaritymeasure"] == "dot_product":
+                            # exp(-x.T*y)
+                            dist_per_word = torch.sum(emb_manual * sentence_embeddings, dim=-1)
+                        elif config["model"]["similaritymeasure"] == "learned":
+                            # x.T*W*y
+                            hW = torch.matmul(emb_manual, (model.W / torch.linalg.norm(model.W)))
+                            dist_per_word = torch.sum(hW * sentence_embeddings, dim=-1)
+                        else:
+                            raise NotImplemented
+                        
+                        farthest_val, farthest_ids = torch.topk(
+                            dist_per_word.squeeze(0), 1, dim=0, largest=True
+                        )  # Store largest distance
+                        proto_words.append(left_word[farthest_ids])
+                        proto_distance[nth_removed_word] = farthest_val
+                        proto_strings = sentence_variants[farthest_ids]
+
+                    # Choose words that give 75% of distance of all 5 words
+                    proto_word_dist = proto_distance - nearest_val_proto
+                    # Check that removing words made words move away
+                    if proto_word_dist[-1] < 0: 
+                        cutoff = proto_word_dist>=0
+                    else:
+                        cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+                    # Include the word responsible for the 75% drop 
+                    cutoff[sum(cutoff)] = True 
+                    protos_words.append([proto_words[i] for i in np.where(cutoff)[0]])
+                        
+
+                values = [
+                    "".join(manual_sentences[z]) + "\n",
+                    f"{int(10)}\n",
+                    f"{int(predicted)}\n",
+                    f"{probability[0]:.3f}\n",
+                    f"{probability[1]:.3f}\n",
+                ]
+                for i, j in enumerate(sorted):
+                    idx = j.item()
+                    nearest_proto = proto_texts[idx]
+                    values.append(f"{nearest_proto}\n")
+                    values.append(", ".join(protos_words[i]) + "\n")
+                    values.append(", ".join(keep_words[i]) + "\n")
+                    values.append(f"{float(top_scores[j]):.3f}\n")
+                    values.append(f"{idx + 1}\n")
+                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}\n")
+                    values.append(f"{float(-weights[idx, predicted]):.3f}\n")
+                    if i == config["explain"]["max_numbers"] - 1:
+                        break
+                explained_test_samples.append(values)
 
         # Go through all the test samples and show their closest prototypes
-        for i in range(len(labels_test)):
+        for i in range(len(labels_test)):         
+
             emb = embedding_test[i].to(device).unsqueeze(0).unsqueeze(0)
             mask = mask_test[i].to(device).unsqueeze(0).unsqueeze(0)
             predicted_label, prototype_distances = model.forward(emb, mask)
@@ -433,10 +630,6 @@ def explain(
 
             # Sort the best scoring prototypes and add them to the explanation CSV
             sorted = torch.argsort(top_scores, descending=True)
-
-
-
-
             if i <= 50:
 
                 # Create Variations of all Sentence Embeddings by removing one word
@@ -483,9 +676,11 @@ def explain(
 
                     # Choose words that give 75% of distance of all 5 words
                     proto_word_dist = text_distance - nearest_val_proto
-                    # Assert that removing words made words move away
-                    assert proto_word_dist[-1] > 0
-                    cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+                    # Check that removing words made words move away
+                    if proto_word_dist[-1] < 0: 
+                        cutoff = proto_word_dist>=0
+                    else:
+                        cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
                     # Include the word responsible for the 75% drop 
                     cutoff[sum(cutoff)] = True 
                     keep_words.append([text_words[i] for i in np.where(cutoff)[0]])
@@ -571,9 +766,11 @@ def explain(
 
                     # Choose words that give 75% of distance of all 5 words
                     proto_word_dist = proto_distance - nearest_val_proto
-                    # Assert that removing words made words move away
-                    assert proto_word_dist[-1]>0
-                    cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+                    # Check that removing words made words move away
+                    if proto_word_dist[-1] < 0: 
+                        cutoff = proto_word_dist>=0
+                    else:
+                        cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
                     # Include the word responsible for the 75% drop 
                     cutoff[sum(cutoff)] = True 
                     protos_words.append([proto_words[i] for i in np.where(cutoff)[0]])
