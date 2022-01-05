@@ -86,7 +86,7 @@ class ProtoNet(nn.Module):
             nn.init.uniform_(torch.empty(1, self.n_prototypes, self.dim), -1, 1),
             requires_grad=True,
         )
-        if self.metric == "weighted_cosine":
+        if self.metric in ["weighted_cosine", "weighted_L2"]:
             self.dim_weights = nn.parameter.Parameter(
                 nn.init.ones_(torch.empty(self.dim)),
                 requires_grad=True,
@@ -140,6 +140,10 @@ class ProtoNet(nn.Module):
                 ),
                 torch.tensor(1e-8),
             )
+        elif self.metric == "weighted_L2":
+            prototype_distances = torch.cdist(
+               self.dim_weights * embedding.float(),self.protolayer.squeeze(), p=2
+            ).squeeze(1) / np.sqrt(self.dim)
         elif self.metric == "dot_product":
             # exp(-x.T*y)
             prototype_distances = torch.sum(self.protolayer * embedding, dim=-1)

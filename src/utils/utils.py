@@ -356,6 +356,19 @@ def proto_loss(prototype_distances, label, model, config, device):
         )  # Set self-distance to 200 -> Don't take that
         divers_loss = -torch.mean(proto_min_dist)
 
+    elif config["model"]["similaritymeasure"] == "weighted_L2":
+        proto_dist = torch.cdist(model.dim_weights *model.protolayer, model.protolayer, p=2) / np.sqrt(
+            config["model"]["embed_dim"]
+        )
+        proto_dist += torch.diag(200 * torch.ones(config["model"]["n_prototypes"])).to(
+            device
+        )  # Increase self distance to not pick this as closest
+        proto_min_dist, _ = torch.min(proto_dist, dim=1)
+        assert torch.all(
+            proto_min_dist < 200
+        )  # Set self-distance to 200 -> Don't take that
+        divers_loss = -torch.mean(proto_min_dist)
+
     elif config["model"]["similaritymeasure"] == "L1":
         proto_dist = (
             torch.cdist(model.protolayer, model.protolayer, p=1)
