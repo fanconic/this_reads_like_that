@@ -129,12 +129,19 @@ def main(config, random_state=0):
         model, test_loader_norat, criterion, device, verbose, gpt2_bert_lm
     )
 
-    sufficiency = (test_probas - test_rat_probas).mean(dim=0)
-    comprehensiveness = (test_probas - test_norat_probas).mean(dim=0)
+    _, pred_classes = test_probas.max(1)
+
+    test_probas = torch.Tensor([test_probas[i,j] for i,j in enumerate(pred_classes)])
+    test_rat_probas = torch.Tensor([test_rat_probas[i,j] for i,j in enumerate(pred_classes)])
+    test_norat_probas = torch.Tensor([test_norat_probas[i,j] for i,j in enumerate(pred_classes)])
+
+    IPython.embed()
+    sufficiency = (test_probas - test_rat_probas).mean()
+    comprehensiveness = (test_probas - test_norat_probas).mean()
     wandb.log(
         {
-            "sufficiency": sufficiency[1].item(),
-            "comprehensiveness": comprehensiveness[1].item(),
+            "sufficiency": sufficiency.item(),
+            "comprehensiveness": comprehensiveness.item(),
         }
     )
 
