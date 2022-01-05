@@ -49,3 +49,4 @@ loss:
 
 explain:
     max_numbers: 3
+    manual_input: False
