@@ -1,19 +1,19 @@
-name: "mpnet"
+name: "test"
 random_state: 42
 wandb_logging: False
 
 data:
-    dataset: "reviews"
+    dataset: "movie_rationals"
     val_size: 0.2
-    data_name: "rt-polarity"
+    data_name: "movies"
     data_dir: "./src/data"
     compute_emb: False
 
 train:
     run_training: True
     batch_size: 128
-    epochs: 100
-    verbose: True
+    epochs: 10
+    verbose: False
 
 model:
     name: "proto"
@@ -22,13 +22,13 @@ model:
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
-    similaritymeasure: "weighted_cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
+    similaritymeasure: "cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
     embedding: "sentence" #sentence or word
     project: True
 
 optimizer:
     name: "Adam" #SGD or Adam
-    lr: 0.0005
+    lr: 0.001
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]
