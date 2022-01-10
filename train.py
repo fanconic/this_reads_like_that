@@ -141,7 +141,8 @@ def main(config, random_state=0):
 
     # Check the faithfullness. Only if we did not add manual sentences as otherwise faithfulness is distorted by them
     if config['explain']['manual_input'] != True:
-        faithful(config, model, test_ds, test_loader, device)
+        for i in range(1,4):
+            faithful(config, model, test_ds, test_loader, device,k=i)
 
 
 def train(

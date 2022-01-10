@@ -1,18 +1,18 @@
-name: "test"
+name: "Weighted Cosine on RT-Polarity"
 random_state: 42
-wandb_logging: False
+wandb_logging: True
 
 data:
-    dataset: "movie_rationals"
+    dataset: "reviews"
     val_size: 0.2
-    data_name: "movies"
+    data_name: "rt-polarity"
     data_dir: "./src/data"
     compute_emb: False
 
 train:
     run_training: True
     batch_size: 128
-    epochs: 10
+    epochs: 100
     verbose: False
 
 model:
@@ -22,13 +22,13 @@ model:
     n_classes: 2
     freeze_layers: True
     n_prototypes: 20 #Make sure that n_prototypes/n_classes gives integer
-    similaritymeasure: "cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
+    similaritymeasure: "weighted_cosine" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
     embedding: "sentence" #sentence or word
     project: True
 
 optimizer:
     name: "Adam" #SGD or Adam
-    lr: 0.001
+    lr: 0.005
     momentum: 0.9
     weight_decay: 0.0005
     betas: [0.9, 0.999]

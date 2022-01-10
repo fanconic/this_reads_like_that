@@ -871,10 +871,64 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
                 prototypes_of_correct_class * (distances - 100) + 100
             )  # Ugly hack s.t. distance of non-classes are 100 (=big)
             dist.append(proto_dist)
+
     dist = torch.cat(dist)
     nearest_vals, nearest_ids = torch.topk(dist, 1, dim=0, largest=False)
     nearest_vals = nearest_vals.cpu().detach().numpy()
     nearest_ids = nearest_ids.cpu().detach().numpy().T.squeeze()
+    #Calculate average intra-prototype distance, only implemented for weighted cosine so far
+    if config["model"]["similaritymeasure"] == "weighted_cosine":
+        comb = torch.cartesian_prod(
+                torch.arange(0, config["model"]["n_prototypes"]),
+                torch.arange(0, config["model"]["n_prototypes"]),
+            )
+
+        proto_self_dist = -(
+            (
+                torch.sum(
+                    model.dim_weights
+                    * model.protolayer[:, comb][:, :, 0]
+                    * model.protolayer[:, comb][:, :, 1],
+                    dim=-1,
+                )
+                / torch.maximum(
+                    (
+                        torch.sqrt(
+                            torch.sum(
+                                model.dim_weights
+                                * torch.square(model.protolayer[:, comb][:, :, 0]),
+                                dim=-1,
+                            )
+                        )
+                        * torch.sqrt(
+                            torch.sum(
+                                model.dim_weights
+                                * torch.square(model.protolayer[:, comb][:, :, 1]),
+                                dim=-1,
+                            )
+                        )
+                    ),
+                    torch.tensor(1e-8),
+                )
+            )
+            .squeeze()
+            .reshape((config["model"]["n_prototypes"], config["model"]["n_prototypes"]))
+        )
+        proto_min = torch.min(proto_self_dist)
+        proto_self_dist = proto_self_dist - proto_min
+        avg_proto = []
+        for j in range(config["model"]["n_classes"]):
+                proto_class = torch.t(
+                    config["model"]["prototype class"][:, j].to(device)
+                )
+                indeces =torch.where(proto_class==1)
+                proto_of_class = proto_self_dist[indeces[0],:][:,indeces[0]]
+                #Note that we also average over self-distance such that in case of only 1 proto no error pops up
+                class_avg = torch.mean(proto_of_class)
+                avg_proto.append(class_avg)
+        intra_class_average_proto_distance = torch.mean(torch.stack(avg_proto))+proto_min
+
+
     texts = []
     for idx, (label, text) in enumerate(train_ds):
         texts.append(text)
@@ -966,5 +1020,6 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
         for i in index:
             print(np.array(keep_words[i]), sep="\n")
             print(np.array(prototext[i]), sep="\n")
-
+    if config["model"]["similaritymeasure"] == "weighted_cosine":
+        print("Average intra_class prototype distance over all classes(For Similarity multiply result with -1): ", intra_class_average_proto_distance.item())
     return keep_words
