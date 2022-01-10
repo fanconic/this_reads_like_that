@@ -5,6 +5,8 @@ saved_models/*
 explanations/*
 wandb
 
+src/data/embedding
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
