@@ -119,22 +119,25 @@ def main(config, random_state=0):
         )
 
     print("Full Test Dataset:")
-    test_probas = test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
+    test_probas, labels = test(
+        model, test_loader, criterion, device, verbose, gpt2_bert_lm
+    )
     print("Only Rationals:")
-    test_rat_probas = test(
+    test_rat_probas, labels_rat = test(
         model, test_loader_rat, criterion, device, verbose, gpt2_bert_lm
     )
     print("No Rationals:")
-    test_norat_probas = test(
+    test_norat_probas, labels_norat = test(
         model, test_loader_norat, criterion, device, verbose, gpt2_bert_lm
     )
 
-    _, pred_classes = test_probas.max(1)
-
-    test_probas = torch.Tensor([test_probas[i,j] for i,j in enumerate(pred_classes)])
-    test_rat_probas = torch.Tensor([test_rat_probas[i,j] for i,j in enumerate(pred_classes)])
-    test_norat_probas = torch.Tensor([test_norat_probas[i,j] for i,j in enumerate(pred_classes)])
-
+    test_probas = torch.Tensor([test_probas[i, j] for i, j in enumerate(labels.long())])
+    test_rat_probas = torch.Tensor(
+        [test_rat_probas[i, j] for i, j in enumerate(labels_rat.long())]
+    )
+    test_norat_probas = torch.Tensor(
+        [test_norat_probas[i, j] for i, j in enumerate(labels_norat.long())]
+    )
     sufficiency = (test_probas - test_rat_probas).mean()
     comprehensiveness = (test_probas - test_norat_probas).mean()
     wandb.log(
@@ -283,10 +286,11 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
     predicted_labels_list = torch.Tensor([])
     test_losses = []
+    labels = torch.Tensor([])
     with torch.no_grad():
         for idx, (label, text, mask) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
-
+            labels = torch.cat([labels, label])
             if isinstance(model, ProtoNet):
                 predicted_label, prototype_distances = model(text, mask)
             else:
@@ -329,7 +333,7 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
             }
         )
 
-    return predicted_labels_list
+    return predicted_labels_list, labels
 
 
 if __name__ == "__main__":
