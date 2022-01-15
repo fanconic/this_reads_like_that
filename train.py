@@ -29,7 +29,10 @@ import pandas as pd
 
 
 def set_seed(seed):
-    """Set all random seeds"""
+    """Set all random seeds
+    Args:
+        seed (int): integer for reproducible experiments
+    """
     random.seed(seed)
     os.environ["PYTHONHASHSEED"] = str(seed)
     np.random.seed(seed)
@@ -40,6 +43,11 @@ def set_seed(seed):
 
 
 def main(config, random_state=0):
+    """Main function
+    Args:
+        config: configuration dictionary
+        random_state (default = 0): integer for reproducible experiments
+    """
     use_cuda = torch.cuda.is_available()
     print("Cuda is available: ", use_cuda)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -156,6 +164,18 @@ def train(
     verbose,
     gpt2_bert_lm,
 ):
+    """Main training loop, where the network is trained
+    Args:
+        model: our pytorch model
+        train_loader: loader with the training data
+        optimizer: optimizer for backpropagation
+        criterion: loss function
+        epoch:  current epoch
+        epochs: max number of epochs
+        device: current device (cpu or gpu)
+        verbose: if the training is printed
+        gpt2_bert_lm: true if we use such backbones
+    """
     if verbose:
         train_loader = tqdm(train_loader)
     total_acc, total_count = 0, 0
@@ -209,6 +229,17 @@ def train(
 
 
 def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm):
+    """Main validation loop, where the network is validated during trianing
+    Args:
+        model: our pytorch model
+        val_loader: loader with the validation data
+        criterion: loss function
+        epoch:  current epoch
+        epochs: max number of epochs
+        device: current device (cpu or gpu)
+        verbose: if the training is printed
+        gpt2_bert_lm: true if we use such backbones
+    """
     val_total_acc, val_total_count, val_losses = 0, 0, []
     if verbose:
         val_loader = tqdm(val_loader)
@@ -272,6 +303,15 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
 
 
 def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
+    """Main test loop, where the network is tested in the end
+    Args:
+        model: our pytorch model
+        test_loader: loader with the validation data
+        criterion: loss function
+        device: current device (cpu or gpu)
+        verbose: if the training is printed
+        gpt2_bert_lm: true if we use such backbones
+    """
     # Test the model
     if verbose:
         test_loader = tqdm(test_loader)
@@ -330,7 +370,7 @@ def explain(
     important_words,
     device,
 ):
-    """Create explanation CSV file of the model in training
+    """Create explanation CSV file of the model, using the first 50 testing samples
     Args:
         config: configuration dictionary
         model: classification model
