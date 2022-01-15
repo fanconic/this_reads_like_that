@@ -142,7 +142,7 @@ class ProtoNet(nn.Module):
             )
         elif self.metric == "weighted_L2":
             prototype_distances = torch.cdist(
-               self.dim_weights * embedding.float(),self.protolayer.squeeze(), p=2
+                self.dim_weights * embedding.float(), self.protolayer.squeeze(), p=2
             ).squeeze(1) / np.sqrt(self.dim)
         elif self.metric == "dot_product":
             # exp(-x.T*y)
@@ -186,7 +186,9 @@ class ProtoNet(nn.Module):
             config["model"]["submodel"] == "roberta"
             and config["model"]["embedding"] == "sentence"
         ):
-            LM = SentenceTransformer("sentence-transformers/all-distilroberta-v1", device=device)
+            LM = SentenceTransformer(
+                "sentence-transformers/all-distilroberta-v1", device=device
+            )
             labels = torch.empty((len(x)))
             embedding = torch.empty((len(x), config["model"]["embed_dim"]))
             for idx, (label, input) in enumerate(x):
@@ -202,7 +204,9 @@ class ProtoNet(nn.Module):
             config["model"]["submodel"] == "mpnet"
             and config["model"]["embedding"] == "sentence"
         ):
-            LM = SentenceTransformer("sentence-transformers/all-mpnet-base-v2", device=device)
+            LM = SentenceTransformer(
+                "sentence-transformers/all-mpnet-base-v2", device=device
+            )
             labels = torch.empty((len(x)))
             embedding = torch.empty((len(x), config["model"]["embed_dim"]))
             for idx, (label, input) in enumerate(x):

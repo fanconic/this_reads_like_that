@@ -357,9 +357,9 @@ def proto_loss(prototype_distances, label, model, config, device):
         divers_loss = -torch.mean(proto_min_dist)
 
     elif config["model"]["similaritymeasure"] == "weighted_L2":
-        proto_dist = torch.cdist(model.dim_weights *model.protolayer, model.protolayer, p=2) / np.sqrt(
-            config["model"]["embed_dim"]
-        )
+        proto_dist = torch.cdist(
+            model.dim_weights * model.protolayer, model.protolayer, p=2
+        ) / np.sqrt(config["model"]["embed_dim"])
         proto_dist += torch.diag(200 * torch.ones(config["model"]["n_prototypes"])).to(
             device
         )  # Increase self distance to not pick this as closest
@@ -458,7 +458,6 @@ def proto_loss(prototype_distances, label, model, config, device):
         print("loss not defined")
         assert False
     l1_loss = model.fc.weight.norm(p=1) / config["model"]["n_prototypes"]
-    
 
     return distr_loss, clust_loss, sep_loss, divers_loss, l1_loss
 
@@ -876,12 +875,12 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
     nearest_vals, nearest_ids = torch.topk(dist, 1, dim=0, largest=False)
     nearest_vals = nearest_vals.cpu().detach().numpy()
     nearest_ids = nearest_ids.cpu().detach().numpy().T.squeeze()
-    #Calculate average intra-prototype distance, only implemented for weighted cosine so far
+    # Calculate average intra-prototype distance, only implemented for weighted cosine so far
     if config["model"]["similaritymeasure"] == "weighted_cosine":
         comb = torch.cartesian_prod(
-                torch.arange(0, config["model"]["n_prototypes"]),
-                torch.arange(0, config["model"]["n_prototypes"]),
-            )
+            torch.arange(0, config["model"]["n_prototypes"]),
+            torch.arange(0, config["model"]["n_prototypes"]),
+        )
 
         proto_self_dist = -(
             (
@@ -918,16 +917,15 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
         proto_self_dist = proto_self_dist - proto_min
         avg_proto = []
         for j in range(config["model"]["n_classes"]):
-                proto_class = torch.t(
-                    config["model"]["prototype class"][:, j].to(device)
-                )
-                indeces =torch.where(proto_class==1)
-                proto_of_class = proto_self_dist[indeces[0],:][:,indeces[0]]
-                #Note that we also average over self-distance such that in case of only 1 proto no error pops up
-                class_avg = torch.mean(proto_of_class)
-                avg_proto.append(class_avg)
-        intra_class_average_proto_distance = torch.mean(torch.stack(avg_proto))+proto_min
-
+            proto_class = torch.t(config["model"]["prototype class"][:, j].to(device))
+            indeces = torch.where(proto_class == 1)
+            proto_of_class = proto_self_dist[indeces[0], :][:, indeces[0]]
+            # Note that we also average over self-distance such that in case of only 1 proto no error pops up
+            class_avg = torch.mean(proto_of_class)
+            avg_proto.append(class_avg)
+        intra_class_average_proto_distance = (
+            torch.mean(torch.stack(avg_proto)) + proto_min
+        )
 
     texts = []
     for idx, (label, text) in enumerate(train_ds):
@@ -947,24 +945,23 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
     elif (
         config["model"]["embedding"] == "sentence"
         and config["model"]["submodel"] == "roberta"
-        ):
-            tokenizer = AutoTokenizer.from_pretrained(
-                "sentence-transformers/all-distilroberta-v1"
-            )
-            model_emb = AutoModel.from_pretrained(
-                "sentence-transformers/all-distilroberta-v1"
-            )
+    ):
+        tokenizer = AutoTokenizer.from_pretrained(
+            "sentence-transformers/all-distilroberta-v1"
+        )
+        model_emb = AutoModel.from_pretrained(
+            "sentence-transformers/all-distilroberta-v1"
+        )
     elif (
         config["model"]["embedding"] == "sentence"
         and config["model"]["submodel"] == "mpnet"
-        ):
-            tokenizer = AutoTokenizer.from_pretrained(
-                "sentence-transformers/all-mpnet-base-v2"
-            )
-            model_emb = AutoModel.from_pretrained(
-                "sentence-transformers/all-mpnet-base-v2"
-            )
-    else: raise Exception('Not implemented yet')
+    ):
+        tokenizer = AutoTokenizer.from_pretrained(
+            "sentence-transformers/all-mpnet-base-v2"
+        )
+        model_emb = AutoModel.from_pretrained("sentence-transformers/all-mpnet-base-v2")
+    else:
+        raise Exception("Not implemented yet")
     # Create Variations of all Sentence Embeddings by removing one word
     keep_words = []
 
@@ -1007,12 +1004,12 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
 
         # Choose words that give 75% of distance of all 5 words
         proto_word_dist = proto_distance - nearest_vals[0, nth_proto]
-        if proto_word_dist[-1] < 0: 
-            cutoff = proto_word_dist>=0
+        if proto_word_dist[-1] < 0:
+            cutoff = proto_word_dist >= 0
         else:
             cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
-        # Include the word responsible for the 75% drop 
-        cutoff[sum(cutoff)] = True 
+        # Include the word responsible for the 75% drop
+        cutoff[sum(cutoff)] = True
         keep_words.append([proto_words[i] for i in np.where(cutoff)[0]])
     for j in range(config["model"]["n_classes"]):
         index = np.where(config["model"]["prototype class"][:, j] == 1)[0]
@@ -1021,5 +1018,8 @@ def prototype_visualization(config, model, train_ds, train_loader_unshuffled, de
             print(np.array(keep_words[i]), sep="\n")
             print(np.array(prototext[i]), sep="\n")
     if config["model"]["similaritymeasure"] == "weighted_cosine":
-        print("Average intra_class prototype distance over all classes(For Similarity multiply result with -1): ", intra_class_average_proto_distance.item())
+        print(
+            "Average intra_class prototype distance over all classes(For Similarity multiply result with -1): ",
+            intra_class_average_proto_distance.item(),
+        )
     return keep_words

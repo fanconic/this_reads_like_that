@@ -1,6 +1,5 @@
 .vscode
 experiment_outputs/*
-experiment_configs/*
 saved_models/*
 explanations/*
 wandb
