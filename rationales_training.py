@@ -301,6 +301,15 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
 
 
 def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
+    """Main test loop, where the network is tested in the end
+    Args:
+        model: our pytorch model
+        test_loader: loader with the validation data
+        criterion: loss function
+        device: current device (cpu or gpu)
+        verbose: if the training is printed
+        gpt2_bert_lm: true if we use such backbones
+    """
     # Test the model
     if verbose:
         test_loader = tqdm(test_loader)
