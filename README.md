@@ -21,7 +21,7 @@ $ conda install --file requirements.txt
 
 ### Repository Structure
 - `train.py`: Main training loop
-- `rationales_training.py`: Trains the model on the humman-annotated rationale dataset and computes the faithfullness
+- `rationales_training.py`: Trains the model on the human-annotated rationale dataset and computes the faithfullness
 - `config.yaml`: Config yaml file, which has all the experimental settings.
 - `run.sh`: Runs the training script, including the conda environment. The config.yaml file is copied to `experiment_configs`
 - `gpu_experiments.sh`: Runs the training script on a SLURM cluster, using GPUs. The output file is saved in `experiment_outputs`
@@ -123,8 +123,8 @@ python3 -u train.py --config_path experiment_configs/remove_divers_loss.yaml
 python3 -u train.py --config_path experiment_configs/remove_l1_loss.yaml
 ```
 
-### Faithfullness
-- Train on humman-annotated rationale movie review dataset 
+### Faithfulness
+- Train on human-annotated rationale movie review dataset 
 ```bash
 python3 -u rationales_training.py --config experiment_configs/rationales.yaml
 ```
