@@ -522,7 +522,7 @@ def load_model_and_dataloader(wandb, config, device):
         )
         # obtain training indices that will be used for validation
         rationale_experiment = False
-        num_train = len(train_iter)
+        num_train = len(list(train_iter))
         indices = list(range(num_train))
         np.random.shuffle(indices)
         split = int(np.floor(config["data"]["val_size"] * num_train))

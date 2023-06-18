@@ -1,10 +1,10 @@
 # Taken from this tutorial: https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html
 
 import os
+from typing import Tuple
 import torch
 from torch import nn, optim
 import yaml
-import wandb
 import argparse
 import random
 import os
@@ -64,7 +64,7 @@ def main(config, random_state=0):
         train_ds,
         train_loader_unshuffled,
         test_ds,
-    ) = load_model_and_dataloader(wandb, config, device)
+    ) = load_model_and_dataloader(config, device)
 
     # prepare teh optimizer
     optimizer = get_optimizer(model, config)
@@ -218,9 +218,7 @@ def train(
             train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
             train_loader.set_postfix(loss=loss.item(), acc=total_acc / total_count)
 
-    wandb.log(
-        {"train_loss": loss, "train_accuracy": total_acc / total_count, "epoch": epoch}
-    )
+    
     print(
         "| epoch {:3d} | training accuracy {:8.3f}".format(
             epoch, total_acc / total_count
@@ -284,13 +282,6 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
                     loss=val_loss.item(), acc=val_total_acc / val_total_count
                 )
     val_loss = sum(val_losses) / len(val_losses)
-    wandb.log(
-        {
-            "epoch": epoch,
-            "val_loss": val_loss,
-            "val_accuracy": val_total_acc / val_total_count,
-        }
-    )
 
     # end of epoch
     print(
@@ -320,6 +311,9 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
     test_losses = []
     with torch.no_grad():
+        df = pd.DataFrame()
+        outcomes = []
+        predictions = []
         for idx, (label, text, mask) in enumerate(test_loader):
             text, label, mask = text.to(device), label.to(device), mask.to(device)
 
@@ -349,15 +343,37 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
             test_losses.append(test_loss)
             total_acc += (predicted_label.argmax(1) == label).sum().item()
+            predictions.append(predicted_label.argmax(1))
+            outcomes.append(label)
             total_count += label.size(0)
+
+        predictions = torch.concat(predictions)
+        outcomes = torch.concat(outcomes)
+        df["outcomes"] = outcomes.numpy()
+        df["predictions"] = predictions.numpy()
+
+        lower, upper = bootstrap(df)
         print("Test Loss: ", sum(test_losses) / len(test_losses))
-        print("Test Accuracy: ", total_acc / total_count)
-        wandb.log(
-            {
-                "test_loss": sum(test_losses) / len(test_losses),
-                "test_accuracy": total_acc / total_count,
-            }
-        )
+        print(f"Test Accuracy: {total_acc / total_count:.4f} (95%-CI: {lower: .4f}, {upper:.4f})", )
+
+
+def bootstrap(df) -> Tuple:
+    """Bootstrap for calculating the confidence interval of a metric function
+    Args:
+        df (pd.DataFrame): dataframe containing 'predictions' and ' outcomes'
+        func (function): metric function that takes (y_true, y_pred) as parameters
+    Returns:
+        lower, upper 95% confidence interval
+        full bootstrap
+    """
+    aucs = []
+    for i in range(1000):
+        sample = df.sample(
+            n=df.shape[0], random_state=i, replace=True
+        )  # take 80% for the bootstrap
+        aucs.append((sample["outcomes"] == sample["predictions"]).sum() /len(df))
+
+    return np.percentile(np.array(aucs), 2.5), np.percentile(np.array(aucs), 97.5)
 
 
 def explain(
@@ -959,8 +975,6 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
     data_explained = pd.read_csv(
         os.path.join("./explanations", config["name"] + "_explained.csv")
     )
-    tbl = wandb.Table(data=data_explained)
-    wandb.log({"Explained": tbl})
 
     score = [f"id_{i} \n" for i in range(1, config["explain"]["max_numbers"] + 1)]
 
@@ -1012,7 +1026,6 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
 
     # Calculate new Accuracy
     acc_test = (np.array(labels_test) == np.array(all_preds)).sum() / len(labels_test)
-    wandb.log({f"test_accuracy_{k}_proto_removed": acc_test})
     print(f"New Accuracy without {k} best prototypes: {acc_test * 100}")
 
 
@@ -1028,14 +1041,5 @@ if __name__ == "__main__":
 
     # Weights & Biases for tracking training
     mode = "online" if config["wandb_logging"] else "disabled"
-
-    wandb.init(
-        mode=mode,
-        project="nlp_groupproject",
-        entity="nlp_groupproject",
-        name=config["name"],
-        reinit=True,
-        config=config,
-    )
 
     main(config, random_state=config["random_state"])
