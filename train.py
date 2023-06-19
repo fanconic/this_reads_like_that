@@ -135,6 +135,9 @@ def main(config, random_state=0):
             config, model, train_ds, train_loader_unshuffled, device
         )
 
+    if config["explain"]["manual_input"] != True:
+        comp_and_suff(config, model, test_ds, train_ds, test_loader, train_loader_unshuffled, device)
+
     # Create explanation CSV
     explain(
         config,
@@ -349,8 +352,8 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
         predictions = torch.concat(predictions)
         outcomes = torch.concat(outcomes)
-        df["outcomes"] = outcomes.numpy()
-        df["predictions"] = predictions.numpy()
+        df["outcomes"] = outcomes.cpu().numpy()
+        df["predictions"] = predictions.cpu().numpy()
 
         lower, upper = bootstrap(df)
         print("Test Loss: ", sum(test_losses) / len(test_losses))
@@ -726,8 +729,14 @@ def explain(
 
             # Sort the best scoring prototypes and add them to the explanation CSV
             sorted = torch.argsort(top_scores, descending=True)
-            if i <= 50:
+            if i <= 5:
+                print(i)
+                from datetime import datetime
 
+                now = datetime.now()
+
+                current_time = now.strftime("%H:%M:%S")
+                print("Current Time =", current_time)
                 # Create Variations of all Sentence Embeddings by removing one word
                 keep_words = []
                 nearest_vals, _ = model.get_dist(emb, _)
@@ -1027,6 +1036,212 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
     # Calculate new Accuracy
     acc_test = (np.array(labels_test) == np.array(all_preds)).sum() / len(labels_test)
     print(f"New Accuracy without {k} best prototypes: {acc_test * 100}")
+
+def comp_and_suff(
+    config,
+    model,
+    test_ds,
+    train_ds,
+    test_loader,
+    train_batches_unshuffled,
+    device,
+):
+    """Calculate comprehensiveness and sufficiency according to ERASER
+    Args:
+        config: configuration dictionary
+        model: classification model
+        test_ds: test dataset (contains the texts)
+        train_ds: training dataset (contains the texts)
+        test_loader: test loader, which contains the embeddings and masks
+        train_batches_unshuffled: train loader, unshuffled, with embeddings and masks
+        device: current device
+    """
+    model.eval()
+    text_train = []
+    labels_train = []
+    text_test = []
+    labels_test = []
+    embedding_test = torch.Tensor([])
+    mask_test = torch.Tensor([])
+
+    # Extract all the texts and embeddings to loop through them
+    for y, x in train_ds:
+        labels_train.append(y - 1)
+        text_train.append(x)
+    for y, x in test_ds:
+        labels_test.append(y - 1)
+        text_test.append(x)
+    for _, x, m in test_loader:
+        embedding_test = torch.cat([embedding_test, x])
+        mask_test = torch.cat([mask_test, m])
+
+    weights = model.get_proto_weights()
+
+    with torch.no_grad():
+        # Initialize for Test & Protovisualization
+        if (
+            config["model"]["embedding"] == "sentence"
+            and config["model"]["submodel"] == "bert"
+        ):
+            tokenizer = AutoTokenizer.from_pretrained(
+                "sentence-transformers/bert-large-nli-mean-tokens"
+            )
+            model_emb = AutoModel.from_pretrained(
+                "sentence-transformers/bert-large-nli-mean-tokens"
+            )
+        elif (
+            config["model"]["embedding"] == "sentence"
+            and config["model"]["submodel"] == "roberta"
+        ):
+            tokenizer = AutoTokenizer.from_pretrained(
+                "sentence-transformers/all-distilroberta-v1"
+            )
+            model_emb = AutoModel.from_pretrained(
+                "sentence-transformers/all-distilroberta-v1"
+            )
+        elif (
+            config["model"]["embedding"] == "sentence"
+            and config["model"]["submodel"] == "mpnet"
+        ):
+            tokenizer = AutoTokenizer.from_pretrained(
+                "sentence-transformers/all-mpnet-base-v2"
+            )
+            model_emb = AutoModel.from_pretrained(
+                "sentence-transformers/all-mpnet-base-v2"
+            )
+        
+        # Go through all the test samples and remove rationals of closest prototype
+        from datetime import datetime
+        keep_words = []
+        removed_sentences = []
+        for i in range(len(labels_test)):
+            if i%50==0:
+                print(i)
+                now = datetime.now()
+                current_time = now.strftime("%H:%M:%S")
+                print("Current Time =", current_time)
+            emb = embedding_test[i].to(device).unsqueeze(0).unsqueeze(0)
+            mask = mask_test[i].to(device).unsqueeze(0).unsqueeze(0)
+            predicted_label, prototype_distances = model.forward(emb, mask)
+            predicted = torch.argmax(predicted_label, dim=-1).squeeze().cpu().detach()
+            probability = (
+                torch.nn.functional.softmax(predicted_label, dim=-1).squeeze().tolist()
+            )
+            similarity_score = (
+                prototype_distances.cpu().detach().squeeze() * weights[:, predicted].T
+            )
+            top_scores = similarity_score
+
+            # Sort the best scoring prototypes with respect to prediction (not ground truth!)
+            sorted_protos = torch.argsort(top_scores, descending=True)
+            
+            # Create Variations of all Sentence Embeddings by removing one word
+            nearest_vals, _ = model.get_dist(emb, _)
+            text_strings = text_test[i]
+            nearest_val_proto = (
+                nearest_vals[:, sorted_protos[0]].cpu().detach().numpy()
+            )
+
+            top_words = np.min(
+                (5, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)))
+            )
+            text_words = []
+            text_distance = np.empty(top_words)
+
+            for nth_removed_word in range(
+                top_words
+            ):  # Iteratively remove most important words
+                text = re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)
+                sentence_variants = [
+                    text[:i] + text[i + 1 :] for i in range(len(text))
+                ]
+                left_word = [text[i] for i in range(len(text))]
+                sentence_variants = [" ".join(i) for i in sentence_variants]
+                tokenized_text = tokenizer(
+                    sentence_variants,
+                    padding=True,
+                    truncation=True,
+                    return_tensors="pt",
+                )
+                # Compute token embeddings
+                with torch.no_grad():
+                    model_output = model_emb(**tokenized_text)
+                # Perform pooling. In this case, mean pooling.
+                sentence_embeddings = mean_pooling(
+                    model_output, tokenized_text["attention_mask"]
+                ).to(device)
+                # Calculate distance to orginial embedding of sentence.
+                dist_per_word, _ = model.get_dist(
+                    sentence_embeddings.unsqueeze(1), _
+                )
+                dist_per_word = dist_per_word[:, sorted_protos[0]]
+                farthest_val, farthest_ids = torch.topk(
+                    dist_per_word, 1, dim=0, largest=True
+                )  # Store largest distance
+                text_words.append(left_word[farthest_ids])
+                text_distance[nth_removed_word] = farthest_val
+                text_strings = sentence_variants[farthest_ids]
+                if i > len(removed_sentences)-1:
+                    removed_sentences.append([text_strings])
+                else:
+                    removed_sentences[i].append(text_strings)
+            # Choose words that give 75% of distance of all 5 words
+            proto_word_dist = text_distance - nearest_val_proto
+            # Check that removing words made words move away
+            if proto_word_dist[-1] < 0:
+                cutoff = proto_word_dist >= 0
+            else:
+                cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
+            # Include the word responsible for the 75% drop
+            cutoff[sum(cutoff)] = True
+            text_words = [text_words[i] for i in np.where(cutoff)[0]]
+            
+            # Store input, rationals, no rationals
+            keep_words.append([text_test[i]])
+            ordered_list = sorted(text_words, key=lambda x: text_test[i].index(x))
+            delimiter = ' '
+            keep_words[i].append(delimiter.join(ordered_list))
+            keep_words[i].append(removed_sentences[i][sum(cutoff)-1])
+            keep_words[i].append(predicted)
+            keep_words[i].append(probability[predicted])
+
+        # Computing predictions for input sentence, only rationals, sentence w/o rationals
+        predicted_label_full = [sublist[3] for sublist in keep_words]
+        predicted_prob_full = [sublist[4] for sublist in keep_words]
+        probs = np.empty((len(predicted_label_full),3))
+        for sentence_version in range(3):
+            sentences = [sublist[sentence_version] for sublist in keep_words]
+
+            tokenized_text = tokenizer(
+                sentences,
+                padding=True,
+                truncation=True,
+                return_tensors="pt",
+            )
+            # Compute token embeddings
+            with torch.no_grad():
+                model_output = model_emb(**tokenized_text)
+            # Perform pooling. In this case, mean pooling.
+            sentence_embeddings = mean_pooling(
+                model_output, tokenized_text["attention_mask"]
+            ).to(device)
+            predicted_label, prototype_distances = model.forward(sentence_embeddings, mask.repeat(len(sentence_embeddings),1,1))
+            probability = (
+                torch.nn.functional.softmax(predicted_label, dim=1).squeeze().tolist()
+            )
+            if sentence_version == 0:
+                # assert that predicted probs are similar to the one before
+                assert (np.logical_or(np.array(predicted_prob_full)-0.001 <= np.array([max(sublist) for sublist in probability]), np.array([max(sublist) for sublist in probability]) <= np.array(predicted_prob_full)+0.001)).all()
+            
+            prob_predicted = np.array([probability[i][predicted_label_full[i]] for i in range(len(probability))])
+            probs[:,sentence_version] = prob_predicted
+
+        comp = (probs[:,0] - probs[:,2]).mean()
+        suff = (probs[:,0] - probs[:,1]).mean()
+        print('Comprehensiveness:', comp)
+        print('Sufficiency:', suff)
+
+
 
 
 if __name__ == "__main__":

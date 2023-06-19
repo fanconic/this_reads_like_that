@@ -504,7 +504,7 @@ def load_embedding(config, set_name):
     return embedding, mask, label
 
 
-def load_model_and_dataloader(wandb, config, device):
+def load_model_and_dataloader(config, device):
     """Loads the model and data loader
     Args:
         wandb: wandb instance for logging
@@ -595,10 +595,8 @@ def load_model_and_dataloader(wandb, config, device):
         model = get_model(vocab_size=len(vocab), model_configs=config["model"]).to(
             device
         )
-        wandb.watch(model)
     else:  # SentBert with embeddings beforehand
         model = get_model(vocab_size=None, model_configs=config["model"]).to(device)
-        wandb.watch(model)
         if not config["data"]["compute_emb"]:
             embedding_train, mask_train, labels_train = load_embedding(config, "train")
             embedding_val, mask_val, labels_val = load_embedding(config, "val")
