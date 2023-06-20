@@ -1135,13 +1135,14 @@ def comp_and_suff(
             # Sort the best scoring prototypes with respect to prediction (not ground truth!)
             sorted_protos = torch.argsort(top_scores, descending=True)
             
-            # Create Variations of all Sentence Embeddings by removing one word
+            # Store avg distance to 3 closest prototypes
             nearest_vals, _ = model.get_dist(emb, _)
             text_strings = text_test[i]
             nearest_val_proto = (
-                nearest_vals[:, sorted_protos[0]].cpu().detach().numpy()
+                nearest_vals[:, sorted_protos[0:3]].cpu().detach().numpy()
             )
 
+            # Create Variations of all Sentence Embeddings by removing one word
             top_words = np.min(
                 (5, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)))
             )
@@ -1174,7 +1175,8 @@ def comp_and_suff(
                 dist_per_word, _ = model.get_dist(
                     sentence_embeddings.unsqueeze(1), _
                 )
-                dist_per_word = dist_per_word[:, sorted_protos[0]]
+                # Look at average distance over 3 closest prototypes
+                dist_per_word = dist_per_word[:, sorted_protos[0:3]].mean(1)
                 farthest_val, farthest_ids = torch.topk(
                     dist_per_word, 1, dim=0, largest=True
                 )  # Store largest distance
@@ -1186,14 +1188,18 @@ def comp_and_suff(
                 else:
                     removed_sentences[i].append(text_strings)
             # Choose words that give 75% of distance of all 5 words
-            proto_word_dist = text_distance - nearest_val_proto
+            proto_word_dist = text_distance - nearest_val_proto.mean()
             # Check that removing words made words move away
             if proto_word_dist[-1] < 0:
-                cutoff = proto_word_dist >= 0
+                cutoff = np.logical_and(proto_word_dist >= 0 , proto_word_dist <= 0.75 * proto_word_dist.max())
+                # Include the word responsible for the 75% drop
+                above_words = proto_word_dist >= 0.75 * proto_word_dist.max()
+                if proto_word_dist.max() >= 0:
+                    cutoff[above_words][np.argmin(proto_word_dist[above_words])] = True
             else:
                 cutoff = proto_word_dist <= 0.75 * proto_word_dist[-1]
-            # Include the word responsible for the 75% drop
-            cutoff[sum(cutoff)] = True
+                # Include the word responsible for the 75% drop
+                cutoff[sum(cutoff)] = True
             text_words = [text_words[i] for i in np.where(cutoff)[0]]
             
             # Store input, rationals, no rationals
