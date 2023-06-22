@@ -1,5 +1,5 @@
 # This Reads Like That
-This is the code of the experiments for the NLP Research Project
+This is the code of the experiments for the submission.
 
 ## Introduction
 Deep neural networks, designed to provide human-interpretable decisions through their architecture, have recently become an increasingly popular alternative to the post-hoc interpretation of traditional black-box models. Perhaps the most widely used approach among these networks is the so-called prototype learning, in which similarities to learned latent prototypes serve as the basis for classifying an unseen data point. Previously, prototypical networks were mostly used in the computer vision domain with common encoder models. In this work, we research their structure to the problem of natural language processing, and more precisely to classification. We introduce a learned weighted similarity metric to extend previous work. Therefore, we compute similarity on a basis of the most informative dimensions of the sentence embedding, which outperforms traditional similarity measures in all our experiments. Additionally, we propose a way to retrieve the most similar words from the prototype and the test sample as an interpretability enhancement mechanism, which does not rely on an a priori choice of the number of words.
@@ -8,7 +8,7 @@ Deep neural networks, designed to provide human-interpretable decisions through 
 ### Installation
 Clone this repository.
 ```bash
-$ git clone https://github.com/fanconic/this_reads_like_that
+$ git clone 
 $ cd this_reads_like_that
 ```
 
@@ -35,7 +35,7 @@ $ conda install --file requirements.txt
     ├── active              # Folder with functions for active learning
     ├── data                # Folder with data processing parts and datasets
         ├── embedding  
-            ├── AG_NEWS         # precomputed embeddings of the AG NEWS dataset (needs to be downloaded and incerted from https://polybox.ethz.ch/index.php/s/S89h02V7AWDTlmw)
+            ├── AG_NEWS         # precomputed embeddings of the AG NEWS dataset 
             ├── movies          # precomputed embeddings of the human-annotated movie reviews
             └── rt-polarity     # precomputed embeddings of the normal movie reviews
         ├── movies          # text data of the human-annotated movie reviews
@@ -60,7 +60,7 @@ bash gpu_experiments.sh <your_experiment_name>
 ```
 
 ## Reproduce the experiments
-In order to reproduce the experiments with the ProtoTrex, you first need to download the AG_NEWS embeddings from https://polybox.ethz.ch/index.php/s/S89h02V7AWDTlmw.
+In order to reproduce the experiments with the ProtoTrex, you first need to download the AG_NEWS embeddings.
 Subsequently, you can rerun our experiments with the following commands:
 
 ### Weighted Similarity Experiments
@@ -130,6 +130,4 @@ python3 -u rationales_training.py --config experiment_configs/rationales.yaml
 ```
 
 ## Contributors
-- Claudio Fanconi - fanconic@ethz.ch
-- Severin Husmann - shusmann@ethz.ch
-- Moritz Vandenhirtz - mvandenhi@ethz.ch
+- Anonymous

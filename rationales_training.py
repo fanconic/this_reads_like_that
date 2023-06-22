@@ -1,10 +1,7 @@
-# Taken from this tutorial: https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html
-
 import os
 import torch
 from torch import nn, optim
 import yaml
-import wandb
 import argparse
 import random
 import os
@@ -55,7 +52,7 @@ def main(config, random_state=0):
         test_ds,
         test_loader_rat,
         test_loader_norat,
-    ) = load_model_and_dataloader(wandb, config, device)
+    ) = load_model_and_dataloader(config, device)
 
     # prepare teh optimizer
     optimizer = get_optimizer(model, config)
@@ -140,12 +137,7 @@ def main(config, random_state=0):
     )
     sufficiency = (test_probas - test_rat_probas).mean()
     comprehensiveness = (test_probas - test_norat_probas).mean()
-    wandb.log(
-        {
-            "sufficiency": sufficiency.item(),
-            "comprehensiveness": comprehensiveness.item(),
-        }
-    )
+
 
     print(f"sufficiency: {sufficiency}")
     print(f"comprehensiveness: {comprehensiveness}")
@@ -216,9 +208,7 @@ def train(
             train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
             train_loader.set_postfix(loss=loss.item(), acc=total_acc / total_count)
 
-    wandb.log(
-        {"train_loss": loss, "train_accuracy": total_acc / total_count, "epoch": epoch}
-    )
+
     print(
         "| epoch {:3d} | training accuracy {:8.3f}".format(
             epoch, total_acc / total_count
@@ -282,13 +272,7 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
                     loss=val_loss.item(), acc=val_total_acc / val_total_count
                 )
     val_loss = sum(val_losses) / len(val_losses)
-    wandb.log(
-        {
-            "epoch": epoch,
-            "val_loss": val_loss,
-            "val_accuracy": val_total_acc / val_total_count,
-        }
-    )
+
 
     # end of epoch
     print(
@@ -358,12 +342,7 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
         print("Test Loss: ", sum(test_losses) / len(test_losses))
         print("Test Accuracy: ", total_acc / total_count)
-        wandb.log(
-            {
-                "test_loss": sum(test_losses) / len(test_losses),
-                "test_accuracy": total_acc / total_count,
-            }
-        )
+
 
     return predicted_labels_list, labels
 
@@ -377,17 +356,5 @@ if __name__ == "__main__":
         config["model"]["n_prototypes"] // config["model"]["n_classes"], 1
     )
     print("Running experiment: {}".format(config["name"]))
-
-    # Weights & Biases for tracking training
-    mode = "online" if config["wandb_logging"] else "disabled"
-
-    wandb.init(
-        mode=mode,
-        project="nlp_groupproject",
-        entity="nlp_groupproject",
-        name=config["name"],
-        reinit=True,
-        config=config,
-    )
 
     main(config, random_state=config["random_state"])

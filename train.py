@@ -1,5 +1,3 @@
-# Taken from this tutorial: https://pytorch.org/tutorials/beginner/text_sentiment_ngrams_tutorial.html
-
 import os
 from typing import Tuple
 import torch
@@ -496,10 +494,7 @@ def explain(
 
         if config["explain"]["manual_input"] == True:
             manual_sentences = [
-                "NLP is a really interesting course!",
-                "NLP is not an interesting course!",
-                "NLP is not not an interesting course!",
-                "The movie's plot was just mediocre, but the stunning performance by Joaquin Phoenix will make the flick a hit.",
+                "NLP is a really interesting field!",
             ]
             tokenized_proto = tokenizer(
                 manual_sentences, padding=True, truncation=True, return_tensors="pt"
