@@ -748,7 +748,7 @@ def explain(
 
             # Sort the best scoring prototypes and add them to the explanation CSV
             sorted = torch.argsort(top_scores, descending=True)
-            if i <= 5:
+            if i <= 50:
                 print(i)
                 from datetime import datetime
 
