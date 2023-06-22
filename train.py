@@ -379,6 +379,25 @@ def bootstrap(df) -> Tuple:
     return np.percentile(np.array(aucs), 2.5), np.percentile(np.array(aucs), 97.5)
 
 
+def bootstrap_faithfulness(df) -> Tuple:
+    """Bootstrap for calculating the confidence interval of a metric function
+    Args:
+        df: dataframe containing 'predictions' and ' outcomes'
+        
+    Returns:
+        lower, upper 95% confidence interval
+        full bootstrap
+    """
+    aucs = []
+    for i in range(1000):
+        sample = pd.DataFrame(df).sample(
+            n=df.shape[0], random_state=i, replace=True
+        )  # take 80% for the bootstrap
+        aucs.append(sample.mean())
+
+    return np.percentile(np.array(aucs), 2.5), np.percentile(np.array(aucs), 97.5)
+
+
 def explain(
     config,
     model,
@@ -1144,7 +1163,7 @@ def comp_and_suff(
 
             # Create Variations of all Sentence Embeddings by removing one word
             top_words = np.min(
-                (5, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)))
+                (10, len(re.findall(r"[\w']+|[.,\":\[\]!?;]", text_strings)))
             )
             text_words = []
             text_distance = np.empty(top_words)
@@ -1242,8 +1261,16 @@ def comp_and_suff(
             prob_predicted = np.array([probability[i][predicted_label_full[i]] for i in range(len(probability))])
             probs[:,sentence_version] = prob_predicted
 
-        comp = (probs[:,0] - probs[:,2]).mean()
-        suff = (probs[:,0] - probs[:,1]).mean()
+        comp_samplewise = (probs[:,0] - probs[:,2])
+        suff_samplewise = (probs[:,0] - probs[:,1])
+        
+        lower_comp, upper_comp = bootstrap_faithfulness(comp_samplewise)
+        lower_suff, upper_suff = bootstrap_faithfulness(suff_samplewise)
+        
+        comp = comp_samplewise.mean()
+        suff = suff_samplewise.mean()
+        print(f"Test Comprehensiveness: {comp:.4f} (95%-CI: {lower_comp: .4f}, {upper_comp:.4f})", )
+        print(f"Test Sufficiency: {suff:.4f} (95%-CI: {lower_suff: .4f}, {upper_suff:.4f})", )
         print('Comprehensiveness:', comp)
         print('Sufficiency:', suff)
 
