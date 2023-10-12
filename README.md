@@ -131,5 +131,6 @@ python3 -u rationales_training.py --config experiment_configs/rationales.yaml
 
 ## Contributors
 - Claudio Fanconi - fanconic@ethz.ch
+- Moritz Vandenhirtz - moritz.vandenhirtz@inf.ethz.ch
 - Severin Husmann - shusmann@ethz.ch
-- Moritz Vandenhirtz - mvandenhi@ethz.ch
+- Julia Vogt - julia.vogt@inf.ethz.ch
