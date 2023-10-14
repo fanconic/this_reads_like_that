@@ -42,7 +42,7 @@ def set_seed(seed):
         torch.backends.cudnn.deterministic = True
 
 
-def main(config, random_state=0):
+def main(config, random_state=0, run_nr=0):
     """Main function
     Args:
         config: configuration dictionary
@@ -55,6 +55,7 @@ def main(config, random_state=0):
     verbose = config["train"]["verbose"]
     gpt2_bert_lm = config["model"]["name"] in ["gpt2", "bert_baseline"]
 
+    val_loss_min = float("inf")
     # load model and data
     (
         model,
@@ -102,58 +103,69 @@ def main(config, random_state=0):
                 gpt2_bert_lm,
             )
 
-            # project prototypes all 5 Epochs. Start projection after 50% of epochs and let last 3 epochs be only final layer training
-            if (
-                (epoch + 1) % 5 == 0
-                and config["model"]["project"]
-                and (epochs * 5 // 10) < (epoch + 1) < (epochs - 3)
-            ):
-                with torch.no_grad():
-                    model = project(config, model, train_loader, device, False)
-                    assert model.protolayer.requires_grad == True
-            # final projection, train only classification layer
-            if (epoch + 1) == (epochs - 3):
-                with torch.no_grad():
-                    model = project(config, model, train_loader, device, True)
-                    model.protolayer.requires_grad = False
-
+            if isinstance(model, ProtoNet):
+                # project prototypes all 5 Epochs. Start projection after 50% of epochs and let last 3 epochs be only final layer training
+                if (
+                    (epoch + 1) % 5 == 0
+                    and config["model"]["project"]
+                    and (epochs * 5 // 10) < (epoch + 1) < (epochs - 3)
+                ):
+                    with torch.no_grad():
+                        model = project(config, model, train_loader, device, False)
+                        assert model.protolayer.requires_grad == True
+                # final projection, train only classification layer
+                if (epoch + 1) == (epochs - 3):
+                    with torch.no_grad():
+                        model = project(config, model, train_loader, device, True)
+                        model.protolayer.requires_grad = False
+                        if hasattr(model, "dim_weights"):
+                            model.dim_weights.requires_grad = False
+                
             scheduler.step()
 
-        torch.save(model.state_dict(), "./saved_models/best_" + config["name"] + ".pth")
+    torch.save(
+        model.state_dict(),
+        f"./saved_models_{config['model']['submodel']}/best_"
+        + config["name"]
+        + "_"
+        + str(run_nr)
+        + ".pth",
+    )
 
-    # Test the model
-    if not config["train"]["run_training"]:
-        model.load_state_dict(
-            torch.load("./saved_models/best_" + config["name"] + ".pth")
-        )
+    model.load_state_dict(
+        torch.load(f"./saved_models_{config['model']['submodel']}/best_" + config["name"] + "_" + str(run_nr) + ".pth")
+    )
 
-    test(model, test_loader, criterion, device, verbose, gpt2_bert_lm)
+    test_accuracy, comp, suff = test(model, test_loader, criterion, device, verbose, abstractive=True)
+    
+    #if config["explain"]["manual_input"] != True:
+    #    comp_extract, suff_extract = comp_and_suff(config, model, test_ds, train_ds, test_loader, train_loader_unshuffled, device)
 
     # Visualize the prototypes
-    if config["model"]["embedding"] == "sentence":
+    if config["model"]["embedding"] == "sentence" and config["prototype_visualisation"]:
+        
         important_words = prototype_visualization(
             config, model, train_ds, train_loader_unshuffled, device
         )
 
-    if config["explain"]["manual_input"] != True:
-        comp_and_suff(config, model, test_ds, train_ds, test_loader, train_loader_unshuffled, device)
+        # Create explanation CSV
+        explain(
+            config,
+            model,
+            test_ds,
+            train_ds,
+            test_loader,
+            train_loader_unshuffled,
+            important_words,
+            device,
+        )
 
-    # Create explanation CSV
-    explain(
-        config,
-        model,
-        test_ds,
-        train_ds,
-        test_loader,
-        train_loader_unshuffled,
-        important_words,
-        device,
-    )
+        # Check the faithfullness. Only if we did not add manual sentences as otherwise faithfulness is distorted by them
+        if config["explain"]["manual_input"] != True:
+            for i in range(1, 4):
+                faithful(config, model, test_ds, test_loader, device, k=i)
 
-    # Check the faithfullness. Only if we did not add manual sentences as otherwise faithfulness is distorted by them
-    if config["explain"]["manual_input"] != True:
-        for i in range(1, 4):
-            faithful(config, model, test_ds, test_loader, device, k=i)
+    return test_accuracy, comp, suff
 
 
 def train(
@@ -191,7 +203,6 @@ def train(
             predicted_label, prototype_distances = model(text, mask)
         else:
             predicted_label = model(text, mask)
-        predicted_label = predicted_label.logits if gpt2_bert_lm else predicted_label
         ce_loss = criterion(predicted_label, label)
         if isinstance(model, ProtoNet):
             distr_loss, clust_loss, sep_loss, divers_loss, l1_loss = proto_loss(
@@ -209,10 +220,11 @@ def train(
             loss = ce_loss
         loss.backward()
         optimizer.step()
-        with torch.no_grad():
-            model.fc.weight.copy_(model.fc.weight.clamp(max=0.0))
-            if hasattr(model, "dim_weights"):
-                model.dim_weights.copy_(model.dim_weights.clamp(min=0.0))
+        if isinstance(model, ProtoNet):
+            with torch.no_grad():
+                model.fc.weight.copy_(model.fc.weight.clamp(max=0.0))
+                if hasattr(model, "dim_weights"):
+                    model.dim_weights.copy_(model.dim_weights.clamp(min=0.0))
         # calculate metric
         total_acc += (predicted_label.argmax(1) == label).sum().item()
         total_count += label.size(0)
@@ -221,12 +233,11 @@ def train(
             train_loader.set_description(f"Epoch [{epoch}/{epochs}]")
             train_loader.set_postfix(loss=loss.item(), acc=total_acc / total_count)
 
-    
-    print(
+    """print(
         "| epoch {:3d} | training accuracy {:8.3f}".format(
             epoch, total_acc / total_count
         )
-    )
+    )"""
 
 
 def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_lm):
@@ -254,9 +265,9 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
             else:
                 predicted_label = model(text, mask)
 
-            predicted_label = (
+            """predicted_label = (
                 predicted_label.logits if gpt2_bert_lm else predicted_label
-            )
+            )"""
             # calc loss
             val_ce_loss = criterion(predicted_label, label)
 
@@ -287,16 +298,16 @@ def val(model, val_loader, criterion, epoch, epochs, device, verbose, gpt2_bert_
     val_loss = sum(val_losses) / len(val_losses)
 
     # end of epoch
-    print(
+    """print(
         "| epoch {:3d} | validation accuracy {:8.3f}".format(
             epoch, val_total_acc / val_total_count
         )
-    )
+    )"""
 
     return val_loss
 
 
-def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
+def test(model, test_loader, criterion, device, verbose, abstractive=False):
     """Main test loop, where the network is tested in the end
     Args:
         model: our pytorch model
@@ -304,7 +315,7 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
         criterion: loss function
         device: current device (cpu or gpu)
         verbose: if the training is printed
-        gpt2_bert_lm: true if we use such backbones
+        k: top prototype to remove
     """
     # Test the model
     if verbose:
@@ -324,9 +335,6 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
                 predicted_label, prototype_distances = model(text, mask)
             else:
                 predicted_label = model(text, mask)
-            predicted_label = (
-                predicted_label.logits if gpt2_bert_lm else predicted_label
-            )
             test_ce_loss = criterion(predicted_label, label)
 
             if isinstance(model, ProtoNet):
@@ -349,7 +357,7 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
             predictions.append(predicted_label.argmax(1))
             outcomes.append(label)
             total_count += label.size(0)
-
+        
         predictions = torch.concat(predictions)
         outcomes = torch.concat(outcomes)
         df["outcomes"] = outcomes.cpu().numpy()
@@ -357,7 +365,75 @@ def test(model, test_loader, criterion, device, verbose, gpt2_bert_lm):
 
         lower, upper = bootstrap(df)
         print("Test Loss: ", sum(test_losses) / len(test_losses))
-        print(f"Test Accuracy: {total_acc / total_count:.4f} (95%-CI: {lower: .4f}, {upper:.4f})", )
+        print(
+            f"Test Accuracy: {total_acc / total_count:.4f} (95%-CI: {lower: .4f}, {upper:.4f})",
+        )
+        
+        if abstractive:
+            
+            prediction_proba = []
+            prediction_proba_perturbed = []
+            prediction_proba_onlyprototype = []
+            
+            weights = model.fc.weight.detach().clone()
+            labels = []
+            for idx, (label, text, mask) in enumerate(test_loader):
+                model.fc.weight.copy_(weights)
+                text, label, mask = text.to(device), label.to(device), mask.to(device)
+
+                # Extract the similarity score and the top prototype
+                predicted_label_k, prototype_distances_k = model(text, mask)
+                predicted = (
+                    torch.argmax(predicted_label_k, dim=-1).squeeze().cpu().detach()
+                )
+                prediction_proba.append(torch.softmax(predicted_label_k, axis=1))
+                
+                # Remove prototype
+                weights_new = weights.clone()
+                similarity_score = (
+                    prototype_distances_k.squeeze()
+                    * weights_new[predicted, :]
+                )
+                top_k = torch.argsort(similarity_score, descending=True)[0]
+                
+                # set the weights of the best prototype to zero and make a prediction
+                weights_new[:,top_k] = torch.zeros(config["model"]["n_classes"]).to(
+                    device
+                )
+                model.fc.weight.copy_(weights_new)
+                
+                # Rerun predictions with new weights
+                predicted_label_k, prototype_distances_k = model(text, mask)
+                prediction_proba_perturbed.append(torch.softmax(predicted_label_k, axis=1))
+                
+                # set the weights of the best prototype to zero and make a prediction
+                weights_new = weights.clone()
+                top_k = torch.argsort(similarity_score, descending=True)[1:]
+                weights_new[:,top_k] = torch.zeros(config["model"]["n_classes"], 10*config["model"]["n_classes"]-1).to(
+                    device
+                )
+                model.fc.weight.copy_(weights_new)
+                
+                # Rerun predictions with new weights
+                predicted_label_k, prototype_distances_k = model(text, mask)
+                prediction_proba_onlyprototype.append(torch.softmax(predicted_label_k, axis=1))
+            
+            prediction_proba = torch.concat(prediction_proba)
+            prediction_proba_perturbed = torch.concat(prediction_proba_perturbed)
+            prediction_proba_onlyprototype = torch.concat(prediction_proba_onlyprototype)
+            predicted_classes = torch.argmax(prediction_proba, axis=1)
+            predicted_classes_perturbed = torch.argmax(prediction_proba_perturbed, axis=1)
+            predicted_classes_onlyprototype = torch.argmax(prediction_proba_onlyprototype, axis=1)
+            
+            comp = (prediction_proba[torch.arange(prediction_proba.size(0)), predicted_classes] - prediction_proba_perturbed[torch.arange(prediction_proba_perturbed.size(0)), predicted_classes_perturbed]).mean()
+            suff = (prediction_proba[torch.arange(prediction_proba.size(0)), predicted_classes] - prediction_proba_onlyprototype[torch.arange(prediction_proba_onlyprototype.size(0)), predicted_classes_onlyprototype]).mean()
+            print(f"Accuracy Original: {(predicted_classes  == outcomes).to(float).mean():.4f}")
+            print(f"Accuracy Perturbed (no rat): {(predicted_classes_perturbed == outcomes).to(float).mean():.4f}")
+            print(f"Accuracy Perturbed (only rat): {(predicted_classes_onlyprototype == outcomes).to(float).mean():.4f}")
+            print(f"Sufficiency: {suff:.4f}")
+            print(f"Comprehensiveness: {comp:.4f}")
+
+    return total_acc / total_count, comp, suff
 
 
 def bootstrap(df) -> Tuple:
@@ -374,10 +450,9 @@ def bootstrap(df) -> Tuple:
         sample = df.sample(
             n=df.shape[0], random_state=i, replace=True
         )  # take 80% for the bootstrap
-        aucs.append((sample["outcomes"] == sample["predictions"]).sum() /len(df))
+        aucs.append((sample["outcomes"] == sample["predictions"]).sum() / len(df))
 
     return np.percentile(np.array(aucs), 2.5), np.percentile(np.array(aucs), 97.5)
-
 
 def bootstrap_faithfulness(df) -> Tuple:
     """Bootstrap for calculating the confidence interval of a metric function
@@ -396,7 +471,6 @@ def bootstrap_faithfulness(df) -> Tuple:
         aucs.append(sample.mean())
 
     return np.percentile(np.array(aucs), 2.5), np.percentile(np.array(aucs), 97.5)
-
 
 def explain(
     config,
@@ -442,25 +516,36 @@ def explain(
     _, proto_texts, _ = get_nearest(
         model, train_batches_unshuffled, text_train, labels_train, device
     )
+
+    import csv
+    # Write prototypes to CSV
+    save_path_prototypes = os.path.join("./explanations", config["name"] + "_prototypes.csv")
+    with open(save_path_prototypes, "w", newline="") as f:
+        proto_texts_for_csv = ["prototypes"] + proto_texts
+        proto_texts_for_csv = [[proto] for proto in proto_texts_for_csv]
+        writer = csv.writer(f)
+        writer.writerows(proto_texts_for_csv)
+
+    
     weights = model.get_proto_weights()
     explained_test_samples = []
     with torch.no_grad():
         # Create the first values, which are a description how to read the CSV
         values = [
-            f"test sample \n",
-            f"true label \n",
-            f"predicted label \n",
-            f"probability class 0 \n",
-            f"probability class 1 \n",
+            f"test sample",
+            f"true label",
+            f"predicted label",
+            f"probability class 0",
+            f"probability class 1",
         ]
         for j in range(config["explain"]["max_numbers"]):
-            values.append(f"explanation_{j + 1} \n")
-            values.append(f"keywords_prototype_{j+1} \n")
-            values.append(f"keywords_sentence_{j+1} \n")
-            values.append(f"score_{j + 1} \n")
-            values.append(f"id_{j + 1} \n")
-            values.append(f"similarity_{j + 1} \n")
-            values.append(f"weight_{j + 1} \n")
+            values.append(f"explanation_{j + 1}")
+            values.append(f"keywords_prototype_{j+1}")
+            values.append(f"keywords_sentence_{j+1}")
+            values.append(f"score_{j + 1}")
+            values.append(f"id_{j + 1}")
+            values.append(f"similarity_{j + 1}")
+            values.append(f"weight_{j + 1} ")
         explained_test_samples.append(values)
         # Initialize for Test & Protovisualization
         if (
@@ -711,29 +796,28 @@ def explain(
                     protos_words.append([proto_words[i] for i in np.where(cutoff)[0]])
 
                 values = [
-                    "".join(manual_sentences[z]) + "\n",
-                    f"{int(10)}\n",
-                    f"{int(predicted)}\n",
-                    f"{probability[0]:.3f}\n",
-                    f"{probability[1]:.3f}\n",
+                    "".join(manual_sentences[z]) + "",
+                    f"{int(10)}",
+                    f"{int(predicted)}",
+                    f"{probability[0]:.3f}",
+                    f"{probability[1]:.3f}",
                 ]
                 for i, j in enumerate(sorted):
                     idx = j.item()
                     nearest_proto = proto_texts[idx]
-                    values.append(f"{nearest_proto}\n")
-                    values.append(", ".join(protos_words[i]) + "\n")
-                    values.append(", ".join(keep_words[i]) + "\n")
-                    values.append(f"{float(top_scores[j]):.3f}\n")
-                    values.append(f"{idx + 1}\n")
-                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}\n")
-                    values.append(f"{float(-weights[idx, predicted]):.3f}\n")
+                    values.append(f"{nearest_proto}")
+                    values.append(", ".join(protos_words[i]) + "")
+                    values.append(", ".join(keep_words[i]) + "")
+                    values.append(f"{float(top_scores[j]):.3f}")
+                    values.append(f"{idx + 1}")
+                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}")
+                    values.append(f"{float(-weights[idx, predicted]):.3f}")
                     if i == config["explain"]["max_numbers"] - 1:
                         break
                 explained_test_samples.append(values)
 
         # Go through all the test samples and show their closest prototypes
         for i in range(len(labels_test)):
-
             emb = embedding_test[i].to(device).unsqueeze(0).unsqueeze(0)
             mask = mask_test[i].to(device).unsqueeze(0).unsqueeze(0)
             predicted_label, prototype_distances = model.forward(emb, mask)
@@ -749,13 +833,6 @@ def explain(
             # Sort the best scoring prototypes and add them to the explanation CSV
             sorted = torch.argsort(top_scores, descending=True)
             if i <= 50:
-                print(i)
-                from datetime import datetime
-
-                now = datetime.now()
-
-                current_time = now.strftime("%H:%M:%S")
-                print("Current Time =", current_time)
                 # Create Variations of all Sentence Embeddings by removing one word
                 keep_words = []
                 nearest_vals, _ = model.get_dist(emb, _)
@@ -925,44 +1002,43 @@ def explain(
                     protos_words.append([proto_words[i] for i in np.where(cutoff)[0]])
 
                 values = [
-                    "".join(text_test[i]) + "\n",
-                    f"{int(labels_test[i])}\n",
-                    f"{int(predicted)}\n",
-                    f"{probability[0]:.3f}\n",
-                    f"{probability[1]:.3f}\n",
+                    "".join(text_test[i]) + "",
+                    f"{int(labels_test[i])}",
+                    f"{int(predicted)}",
+                    f"{probability[0]:.3f}",
+                    f"{probability[1]:.3f}",
                 ]
                 for i, j in enumerate(sorted):
                     idx = j.item()
                     nearest_proto = proto_texts[idx]
-                    values.append(f"{nearest_proto}\n")
-                    values.append(", ".join(protos_words[i]) + "\n")
-                    values.append(", ".join(keep_words[i]) + "\n")
-                    values.append(f"{float(top_scores[j]):.3f}\n")
-                    values.append(f"{idx + 1}\n")
-                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}\n")
-                    values.append(f"{float(-weights[idx, predicted]):.3f}\n")
+                    values.append(f"{nearest_proto}")
+                    values.append(", ".join(protos_words[i]) + "")
+                    values.append(", ".join(keep_words[i]) + "")
+                    values.append(f"{float(top_scores[j]):.3f}")
+                    values.append(f"{idx + 1}")
+                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}")
+                    values.append(f"{float(-weights[idx, predicted]):.3f}")
                     if i == config["explain"]["max_numbers"] - 1:
                         break
 
             else:
-
                 values = [
-                    "".join(text_test[i]) + "\n",
-                    f"{int(labels_test[i])}\n",
-                    f"{int(predicted)}\n",
-                    f"{probability[0]:.3f}\n",
-                    f"{probability[1]:.3f}\n",
+                    "".join(text_test[i]) + "",
+                    f"{int(labels_test[i])}",
+                    f"{int(predicted)}",
+                    f"{probability[0]:.3f}",
+                    f"{probability[1]:.3f}",
                 ]
                 for i, j in enumerate(sorted):
                     idx = j.item()
                     nearest_proto = proto_texts[idx]
-                    values.append(f"{nearest_proto}\n")
-                    values.append(", ".join(important_words[idx]) + "\n")
-                    values.append(", ".join(" ") + "\n")
-                    values.append(f"{float(top_scores[j]):.3f}\n")
-                    values.append(f"{idx + 1}\n")
-                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}\n")
-                    values.append(f"{float(-weights[idx, predicted]):.3f}\n")
+                    values.append(f"{nearest_proto}")
+                    values.append(", ".join(important_words[idx]) + "")
+                    values.append(", ".join(" ") + "")
+                    values.append(f"{float(top_scores[j]):.3f}")
+                    values.append(f"{idx + 1}")
+                    values.append(f"{float(-prototype_distances.squeeze()[idx]):.3f}")
+                    values.append(f"{float(-weights[idx, predicted]):.3f}")
                     if i == config["explain"]["max_numbers"] - 1:
                         break
 
@@ -998,15 +1074,17 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
     for _, x, m in test_loader:
         embedding_test = torch.cat([embedding_test, x])
         mask_test = torch.cat([mask_test, m])
+    
+    weights = model.get_proto_weights()
 
     # Read the csv that was previously created in explain()
     data_explained = pd.read_csv(
         os.path.join("./explanations", config["name"] + "_explained.csv")
     )
 
-    score = [f"id_{i} \n" for i in range(1, config["explain"]["max_numbers"] + 1)]
+    score = [f"id_{i}" for i in range(1, config["explain"]["max_numbers"] + 1)]
 
-    # extract the top k prototypes
+    # extract the top k prototypess
     top_ids = torch.tensor(data_explained[score].to_numpy())[:, :k] - 1
 
     # Create a new
@@ -1015,11 +1093,11 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
     all_preds = []
     with torch.no_grad():
         # Create the explanation of the CSV first
-        values.append(f"test sample \n")
-        values.append(f"true label \n")
-        values.append(f"predicted label \n")
-        values.append(f"probability class 0 \n")
-        values.append(f"probability class 1 \n")
+        values.append(f"test sample")
+        values.append(f"true label")
+        values.append(f"predicted label")
+        values.append(f"probability class 0")
+        values.append(f"probability class 1")
         explained_test_samples.append(values)
 
         # Iterate through all the test samples
@@ -1044,18 +1122,21 @@ def faithful(config, model, test_ds, test_loader, device, k=1):
 
             # Append values for the CSV
             values = [
-                "".join(text_test[i]) + "\n",
-                f"{int(labels_test[i])}\n",
-                f"{int(predicted)}\n",
-                f"{probability[0]:.3f}\n",
-                f"{probability[1]:.3f}\n",
+                "".join(text_test[i]),
+                f"{int(labels_test[i])}",
+                f"{int(predicted)}",
+                f"{probability[0]:.3f}",
+                f"{probability[1]:.3f}",
             ]
             explained_test_samples.append(values)
+            
+            comp_samplewise = (probs[:,0] - probs[:,2])
+            suff_samplewise = (probs[:,0] - probs[:,1])
 
     # Calculate new Accuracy
     acc_test = (np.array(labels_test) == np.array(all_preds)).sum() / len(labels_test)
     print(f"New Accuracy without {k} best prototypes: {acc_test * 100}")
-
+    
 def comp_and_suff(
     config,
     model,
@@ -1128,6 +1209,17 @@ def comp_and_suff(
             model_emb = AutoModel.from_pretrained(
                 "sentence-transformers/all-mpnet-base-v2"
             )
+        elif (
+            config["model"]["embedding"] == "sentence"
+            and config["model"]["submodel"] == "gpt2"
+        ):
+            tokenizer = AutoTokenizer.from_pretrained(
+                "Muennighoff/SGPT-125M-weightedmean-nli-bitfit"
+            )
+            model_emb = AutoModel.from_pretrained(
+                "Muennighoff/SGPT-125M-weightedmean-nli-bitfit"
+            )
+        
         
         # Go through all the test samples and remove rationals of closest prototype
         from datetime import datetime
@@ -1273,8 +1365,8 @@ def comp_and_suff(
         print(f"Test Sufficiency: {suff:.4f} (95%-CI: {lower_suff: .4f}, {upper_suff:.4f})", )
         print('Comprehensiveness:', comp)
         print('Sufficiency:', suff)
-
-
+        
+        return comp, suff
 
 
 if __name__ == "__main__":
@@ -1290,4 +1382,20 @@ if __name__ == "__main__":
     # Weights & Biases for tracking training
     mode = "online" if config["wandb_logging"] else "disabled"
 
-    main(config, random_state=config["random_state"])
+    accuracies = []
+    comp_extract_list = []
+    suff_extract_list = []
+    for i, random_state in enumerate(config["random_state"]):
+        accuracy, comp_extract, suff_extract = main(config, random_state=random_state, run_nr=i)
+        accuracies.append(accuracy)
+        comp_extract_list.append(comp_extract.detach().cpu())
+        suff_extract_list.append(suff_extract.detach().cpu())
+        config["data"]["compute_emb"] = False
+
+    accuracies = np.array(accuracies)
+    comp_extract_list = np.array(comp_extract_list)
+    suff_extract_list = np.array(suff_extract_list)
+    print("----------- final metrics -------------")
+    print(f"Accuracy: \tmean: {accuracies.mean():.4f} std: {accuracies.std():.4f}")
+    print(f"Sufficiency: \tmean: {suff_extract_list.mean():.4f} std: {suff_extract_list.std():.4f}")
+    print(f"Comprehensiveness: \tmean: {comp_extract_list.mean():.4f} std: {comp_extract_list.std():.4f}")
