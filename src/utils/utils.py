@@ -1,6 +1,6 @@
 import torch
 from torchtext.datasets import AG_NEWS, IMDB
-from src.models.models import MLP, GPT2, BERT, ProtoNet, nes_torch
+from src.models.models import MLP, GPT2, BERT, MPNET, ProtoNet, RoBERTa, nes_torch
 from src.data.dataloader import build_loader
 import os
 import pickle
@@ -34,6 +34,10 @@ def get_model(vocab_size, model_configs):
         return MLP(vocab_size, model_configs)
     elif name == "gpt2":
         return GPT2(vocab_size, model_configs)
+    elif name == "roberta":
+        return RoBERTa(vocab_size, model_configs)
+    elif name == "mpnet":
+        return MPNET(vocab_size, model_configs)
     elif name == "bert_baseline":
         return BERT(vocab_size, model_configs)
     elif name == "proto":
@@ -276,7 +280,7 @@ def convert_label(labels):
 
 def ned_torch(x1, x2, dim=1, eps=1e-8):
     ned_2 = 0.5 * ((x1 - x2).var(dim=dim) / (x1.var(dim=dim) + x2.var(dim=dim) + eps))
-    return ned_2 ** 0.5
+    return ned_2**0.5
 
 
 def nes_torch(x1, x2, dim=1, eps=1e-8):
@@ -301,7 +305,7 @@ def proto_loss(prototype_distances, label, model, config, device):
     # use max_dist because similarity can be >0/<0 -> shift it s.t. it's always >0
     # -> other class has value 0 which is always smaller than shifted similarity
     prototypes_of_correct_class = torch.t(
-        config["model"]["prototype class"][:, label]
+        config["model"]["prototype class"][:, label.cpu()]
     ).to(device)
     inverted_distances, _ = torch.max(
         (max_dist - prototype_distances) * prototypes_of_correct_class, dim=1
@@ -358,7 +362,7 @@ def proto_loss(prototype_distances, label, model, config, device):
 
     elif config["model"]["similaritymeasure"] == "weighted_L2":
         proto_dist = torch.cdist(
-            model.dim_weights * model.protolayer, model.protolayer, p=2
+            2*torch.sigmoid(model.dim_weights) * model.protolayer, model.protolayer, p=2
         ) / np.sqrt(config["model"]["embed_dim"])
         proto_dist += torch.diag(200 * torch.ones(config["model"]["n_prototypes"])).to(
             device
@@ -471,7 +475,7 @@ def save_embedding(embedding, mask, label, config, set_name):
         config: further configuration
         set_name: name of the phase
     """
-    path = os.path.join("./src/data/embedding", config["data"]["data_name"])
+    path = os.path.join(f"./src/data/embedding_{config['model']['submodel']}", config["data"]["data_name"])
     os.makedirs(path, exist_ok=True, mode=0o777)
     name = config["model"]["submodel"] + "_" + set_name
     path_e = os.path.join(path, name + ".pt")
@@ -490,7 +494,7 @@ def load_embedding(config, set_name):
     returns:
         embedding, masks & labels
     """
-    path = os.path.join("./src/data/embedding", config["data"]["data_name"])
+    path = os.path.join(f"./src/data/embedding_{config['model']['submodel']}", config["data"]["data_name"])
     name = config["model"]["submodel"] + "_" + set_name
     path_e = os.path.join(path, name + ".pt")
     assert os.path.isfile(path_e)
@@ -572,7 +576,7 @@ def load_model_and_dataloader(config, device):
             test_ds,
             vocab=vocab,
             device=device,
-            batch_size=config["train"]["batch_size"],
+            batch_size=1,
             config=config,
         )
 
@@ -595,6 +599,7 @@ def load_model_and_dataloader(config, device):
         model = get_model(vocab_size=len(vocab), model_configs=config["model"]).to(
             device
         )
+
     else:  # SentBert with embeddings beforehand
         model = get_model(vocab_size=None, model_configs=config["model"]).to(device)
         if not config["data"]["compute_emb"]:
@@ -673,7 +678,7 @@ def load_model_and_dataloader(config, device):
         )
         test_loader = torch.utils.data.DataLoader(
             list(zip(labels_test, embedding_test, mask_test)),
-            batch_size=config["train"]["batch_size"],
+            batch_size=1,
             shuffle=False,
             pin_memory=True,
             num_workers=0,
@@ -757,7 +762,6 @@ def get_nearest_sent(config, model, train_loader, device):
     )  # Check that hack works, otherwise datapoint from other class is closer to prototype
     nearest_ids = nearest_ids.cpu().detach().numpy().T
     for j in range(1, 20):
-
         for i in range(len(nearest_ids[:, 0])):
             if np.count_nonzero(nearest_ids[:, 0] == nearest_ids[i, 0]) != 1:
                 nearest_ids[i, 0] = nearest_ids[i, j]
