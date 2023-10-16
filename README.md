@@ -60,7 +60,7 @@ bash gpu_experiments.sh <your_experiment_name>
 ```
 
 ## Reproduce the experiments
-In order to reproduce the experiments with the ProtoTrex, you can download the embeddings from the various models and datasets from here https://polybox.ethz.ch/index.php/s/S89h02V7AWDTlmw.
+In order to reproduce the experiments with the ProtoTrex, you can download the embeddings from the various models and datasets from here [https://polybox.ethz.ch/index.php/s/S89h02V7AWDTlmw](https://polybox.ethz.ch/index.php/s/8iTOzaomCTsS1Px).
 Subsequently, you can rerun our experiments with the following commands, where `<model>` should be changed with the backbone transformer (`bert`, `gpt2`, `mpnet`, `roberta`):
 
 ### Weighted Similarity Experiments
