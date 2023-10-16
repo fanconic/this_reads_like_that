@@ -61,72 +61,84 @@ bash gpu_experiments.sh <your_experiment_name>
 
 ## Reproduce the experiments
 In order to reproduce the experiments with the ProtoTrex, you first need to download the AG_NEWS embeddings from https://polybox.ethz.ch/index.php/s/S89h02V7AWDTlmw.
-Subsequently, you can rerun our experiments with the following commands:
+Subsequently, you can rerun our experiments with the following commands, where `<model>` should be changed with the backbone transformer (`bert`, `gpt2`, `mpnet`, `roberta`):
 
 ### Weighted Similarity Experiments
 - AG News - Cosine Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/cosine_news.yaml
+python3 -u train.py --config_path experiment_configs/<model>/cosine_news.yaml
 ```
 - AG News - Weighted Cosine Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/weighted_cosine_news.yaml
+python3 -u train.py --config_path experiment_configs/<model>/weighted_cosine_news.yaml
 ```
 - AG News - L2 Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/l2_news.yaml
+python3 -u train.py --config_path experiment_configs/<model>/l2_news.yaml
 ```
 - AG News - Weighted L2 Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/weighted_l2_news.yaml
+python3 -u train.py --config_path experiment_configs/<model>/weighted_l2_news.yaml
 ```
 - Movie Reviews - Cosine Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/cosine_movies.yaml
+python3 -u train.py --config_path experiment_configs/<model>/cosine_movies.yaml
 ```
 - Movie Reviews - Weighted Cosine Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/weighted_cosine_movies.yaml
+python3 -u train.py --config_path experiment_configs/<model>/weighted_cosine_movies.yaml
 ```
 - Movie Reviews - L2 Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/l2_movies.yaml
+python3 -u train.py --config_path experiment_configs/<model>/l2_movies.yaml
 ```
 - Movie Reviews - Weighted L2 Similarity: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/weighted_L2_movies.yaml
+python3 -u train.py --config_path experiment_configs/<model>/weighted_L2_movies.yaml
 ```
+
+### Interpretability vs. Performance Trade-Off
+- AG News - non-interpretable: 
+```bash 
+python3 -u train.py --config_path experiment_configs/<model>/non_interpretable_news.yaml
+```
+- Movie Reviews - non-interpretable: 
+```bash 
+python3 -u train.py --config_path experiment_configs/<model>/non_interpretable_movies.yaml
+```
+
+
 
 ### Ablation Studies of Loss
 - Full Loss: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/full_loss.yaml
+python3 -u train.py --config_path experiment_configs/bert/full_loss.yaml
 ```
 - Without Clustering Loss: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/remove_clust_loss.yaml
+python3 -u train.py --config_path experiment_configs/bert/remove_clust_loss.yaml
 ```
 - Without Separation Loss: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/remove_sep_loss.yaml
+python3 -u train.py --config_path experiment_configs/bert/remove_sep_loss.yaml
 ```
 - Without Distribution Loss: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/remove_distr_loss.yaml
+python3 -u train.py --config_path experiment_configs/bert/remove_distr_loss.yaml
 ```
 - Without Diversity Loss: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/remove_divers_loss.yaml
+python3 -u train.py --config_path experiment_configs/bert/remove_divers_loss.yaml
 ```
 - Without L1 Regularizer: 
 ```bash 
-python3 -u train.py --config_path experiment_configs/remove_l1_loss.yaml
+python3 -u train.py --config_path experiment_configs/bert/remove_l1_loss.yaml
 ```
 
 ### Faithfulness
 - Train on human-annotated rationale movie review dataset 
 ```bash
-python3 -u rationales_training.py --config experiment_configs/rationales.yaml
+python3 -u rationales_training.py --config experiment_configs/<model>/rationales.yaml
 ```
 
 ## Contributors
