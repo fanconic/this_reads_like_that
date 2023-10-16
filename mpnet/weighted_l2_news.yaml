@@ -1,0 +1,53 @@
+name: "Weighted L2 on AG_NEWS"
+random_state: [42, 11, 1996, 2003, 19]
+wandb_logging: False
+prototype_visualisation: False
+
+data:
+    dataset: "AG_NEWS"
+    val_size: 0.2
+    data_name: "AG_NEWS"
+    data_dir: "./src/data"
+    compute_emb: False
+
+train:
+    run_training: True
+    batch_size: 128
+    epochs: 100
+    verbose: False
+
+model:
+    name: "proto"
+    submodel: "mpnet" #if not a protonet, called it same as "name"
+    embed_dim: 768 #1024 for sentence + bert, 768 for sentence + roberta/mpnet
+    n_classes: 4
+    freeze_layers: True
+    n_prototypes: 40 #Make sure that n_prototypes/n_classes gives integer
+    similaritymeasure: "weighted_L2" # [L1, L2, cosine, weighted_cosine, dot_product, learned]
+    embedding: "sentence" #sentence or word
+    project: True
+
+optimizer:
+    name: "Adam" #SGD or Adam
+    lr: 0.005
+    momentum: 0.9
+    weight_decay: 0.0005
+    betas: [0.9, 0.999]
+    T_0: 10
+
+scheduler:
+    name: "step"
+    lr_reduce_factor: 0.5
+    patience_lr_reduce: 30
+    poly_reduce: 0.9
+
+loss:
+    lambda1: 0.2
+    lambda2: 0.2
+    lambda3: 0.3
+    lambda4: 0.1
+    lambda5: 0.001
+
+explain:
+    max_numbers: 3
+    manual_input: False
