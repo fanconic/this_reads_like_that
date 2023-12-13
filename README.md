@@ -1,5 +1,5 @@
 # This Reads Like That
-This is the code for the EMNLP 2023 publication: __*This* Reads Like *That*: Deep Learning for Interpretable Natural Language Processing__
+This is the code for the EMNLP 2023 publication: [__*This* Reads Like *That*: Deep Learning for Interpretable Natural Language Processing__](https://aclanthology.org/2023.emnlp-main.869/)
 
 ## Introduction
 Prototype learning, a popular machine learning method designed for inherently interpretable decisions, leverages similarities to learned prototypes for classifying new data. While it is mainly applied in computer vision, in this work, we build upon prior research and further explore the extension of prototypical networks to natural language processing. We introduce a learned weighted similarity measure that enhances the similarity computation by focusing on informative dimensions of pre-trained sentence embeddings. Additionally, we propose a post-hoc explainability mechanism that extracts prediction-relevant words from both the prototype and input sentences. Finally, we empirically demonstrate that our proposed method not only improves predictive performance on the AG News and RT Polarity datasets over a previous prototype-based approach by  Friedrich et al.(2022)  but also enhances the faithfulness of explanations compared to rational-based work by Lei et al. (2016).
@@ -139,6 +139,27 @@ python3 -u train.py --config_path experiment_configs/bert/remove_l1_loss.yaml
 - Train on human-annotated rationale movie review dataset 
 ```bash
 python3 -u rationales_training.py --config experiment_configs/<model>/rationales.yaml
+```
+
+## Citation
+```
+@inproceedings{fanconi-etal-2023-reads,
+    title = "This Reads Like That: Deep Learning for Interpretable Natural Language Processing",
+    author = "Fanconi, Claudio  and
+      Vandenhirtz, Moritz  and
+      Husmann, Severin  and
+      Vogt, Julia",
+    editor = "Bouamor, Houda  and
+      Pino, Juan  and
+      Bali, Kalika",
+    booktitle = "Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2023",
+    address = "Singapore",
+    publisher = "Association for Computational Linguistics",
+    url = "https://aclanthology.org/2023.emnlp-main.869",
+    pages = "14067--14076"
+}
 ```
 
 ## Contributors
